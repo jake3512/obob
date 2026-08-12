@@ -23,6 +23,14 @@ body {
   color: var(--text);
   font-family: "Segoe UI", "Noto Sans KR", Pretendard, system-ui, -apple-system, sans-serif;
   padding: 20px 16px 60px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .app-header {
@@ -330,7 +338,7 @@ body {
 
 .piano {
   position: relative;
-  height: 190px;
+  height: 210px;
   background: #0c0c14;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -348,8 +356,8 @@ body {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: 8px;
-  font-size: 0.65rem;
+  padding-bottom: 6px;
+  font-size: 0.58rem;
   color: #666;
   font-weight: 600;
 }
@@ -364,7 +372,7 @@ body {
 .piano-black-row .key {
   position: absolute;
   top: 0;
-  width: 9%;
+  width: 3.3%;
   height: 100%;
   background: linear-gradient(180deg, #2b2b2b, #050505);
   border-radius: 0 0 5px 5px;

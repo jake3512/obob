@@ -43,20 +43,23 @@
   };
 
   // Positioned like a real kit viewed from the drummer's seat: hats/tom/crash
-  // up top, snare front-center, kick largest and lowest.
+  // up top, snare front-center, kick largest and lowest. Pads with startVoice
+  // ring for as long as they're held (release fades them out); clap has no
+  // natural sustain so it stays a fixed one-shot hit via `trigger`.
   const DRUM_PADS = [
-    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 16, trigger: (t) => playHat(t, false) },
-    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 34, trigger: (t) => playHat(t, true) },
-    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 62, trigger: (t) => playTom(t) },
+    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 16, startVoice: (t) => startHatVoice(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 34, startVoice: (t) => startHatVoice(t, true) },
+    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 62, startVoice: (t) => startTomVoice(t) },
     { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', size: 'sm', top: 16, left: 85, trigger: (t) => playClap(t) },
-    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 46, left: 30, trigger: (t) => playSnare(t) },
-    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 68, left: 58, trigger: (t) => playKick(t) },
+    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 46, left: 30, startVoice: (t) => startSnareVoice(t) },
+    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 68, left: 58, startVoice: (t) => startKickVoice(t) },
   ];
 
-  const WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12];
-  const WHITE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'];
-  const BLACK_OFFSETS = [1, 3, 6, 8, 10];
-  const BLACK_AFTER_WHITE_IDX = [0, 1, 3, 4, 5];
+  const OCTAVE_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11];
+  const OCTAVE_WHITE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const OCTAVE_BLACK_OFFSETS = [1, 3, 6, 8, 10];
+  const OCTAVE_BLACK_AFTER_IDX = [0, 1, 3, 4, 5];
+  const KEYBOARD_OCTAVES = 3;
   const KEYBOARD_DEFAULT_BASE_MIDI = { bass: 36, guitar: 48, lead: 60, epiano: 60 };
 
   const state = {
@@ -213,65 +216,69 @@
     return buf;
   }
 
-  function playKick(time) {
+  // These return a {osc1, osc2, gain} voice compatible with
+  // stopMelodicVoice/releaseVoiceForPointer: the attack+decay ramps down to
+  // a sustain floor instead of silence, and the noise/oscillator sources are
+  // left running (not stopped) so how long the pad is held controls how long
+  // it rings - release fades it out early, or it just holds at the floor.
+  function startKickVoice(time) {
     const ctx = state.ctx;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     const g = ctx.createGain();
     osc.frequency.setValueAtTime(noteFreq(150), time);
     osc.frequency.exponentialRampToValueAtTime(noteFreq(45), time + envTime(0.15));
-    g.gain.setValueAtTime(1, time);
-    g.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.35));
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(1, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.22, time + envTime(0.35));
     osc.connect(g);
     g.connect(state.instrumentBus);
     osc.start(time);
-    osc.stop(time + envTime(0.4));
+    return { osc1: osc, osc2: null, gain: g };
   }
 
-  function playSnare(time) {
+  function startSnareVoice(time) {
     const ctx = state.ctx;
     const noise = ctx.createBufferSource();
     noise.buffer = ensureNoiseBuffer();
+    noise.loop = true;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
     hp.frequency.value = 1000;
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(1, time);
-    ng.gain.exponentialRampToValueAtTime(0.01, time + envTime(0.2));
-    noise.connect(hp);
-    hp.connect(ng);
-    ng.connect(state.instrumentBus);
-    noise.start(time);
-    noise.stop(time + envTime(0.2) + 0.02);
-
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.value = noteFreq(180);
-    const og = ctx.createGain();
-    og.gain.setValueAtTime(0.7, time);
-    og.gain.exponentialRampToValueAtTime(0.01, time + envTime(0.12));
-    osc.connect(og);
-    og.connect(state.instrumentBus);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(1, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.18, time + envTime(0.2));
+    noise.connect(hp);
+    hp.connect(g);
+    osc.connect(g);
+    g.connect(state.instrumentBus);
+    noise.start(time);
     osc.start(time);
-    osc.stop(time + envTime(0.15));
+    return { osc1: noise, osc2: osc, gain: g };
   }
 
-  function playHat(time, open) {
+  function startHatVoice(time, open) {
     const ctx = state.ctx;
     const noise = ctx.createBufferSource();
     noise.buffer = ensureNoiseBuffer();
+    noise.loop = true;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
     hp.frequency.value = 7000;
     const g = ctx.createGain();
-    const dur = open ? envTime(0.5) : envTime(0.08);
-    g.gain.setValueAtTime(0.8, time);
-    g.gain.exponentialRampToValueAtTime(0.01, time + dur);
+    const decayT = open ? envTime(0.5) : envTime(0.08);
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.8, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(open ? 0.22 : 0.05, time + decayT);
     noise.connect(hp);
     hp.connect(g);
     g.connect(state.instrumentBus);
     noise.start(time);
-    noise.stop(time + dur + 0.02);
+    return { osc1: noise, osc2: null, gain: g };
   }
 
   function playClap(time) {
@@ -295,19 +302,20 @@
     }
   }
 
-  function playTom(time) {
+  function startTomVoice(time) {
     const ctx = state.ctx;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     const g = ctx.createGain();
     osc.frequency.setValueAtTime(noteFreq(200), time);
     osc.frequency.exponentialRampToValueAtTime(noteFreq(90), time + envTime(0.25));
-    g.gain.setValueAtTime(1, time);
-    g.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.3));
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(1, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.2, time + envTime(0.3));
     osc.connect(g);
     g.connect(state.instrumentBus);
     osc.start(time);
-    osc.stop(time + envTime(0.35));
+    return { osc1: osc, osc2: null, gain: g };
   }
 
   // Keyboard voices: held while the key is pressed, like any real keyboard
@@ -427,13 +435,27 @@
       pad.style.top = inst.top + '%';
       pad.style.left = inst.left + '%';
       pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span>`;
-      pad.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        if (!state.started) return;
-        inst.trigger(state.ctx.currentTime + 0.005);
-        pad.classList.add('active');
-        setTimeout(() => pad.classList.remove('active'), 120);
-      });
+      if (inst.startVoice) {
+        pad.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          if (!state.started) return;
+          pad.setPointerCapture(e.pointerId);
+          const voice = inst.startVoice(state.ctx.currentTime + 0.005);
+          state.activeVoices.set(e.pointerId, { voice, pad, startedAt: performance.now() });
+          pad.classList.add('active');
+        });
+        pad.addEventListener('pointerup', (e) => releaseVoiceForPointer(e.pointerId));
+        pad.addEventListener('pointercancel', (e) => releaseVoiceForPointer(e.pointerId));
+        pad.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
+      } else {
+        pad.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          if (!state.started) return;
+          inst.trigger(state.ctx.currentTime + 0.005);
+          pad.classList.add('active');
+          setTimeout(() => pad.classList.remove('active'), 120);
+        });
+      }
       el.drumKit.appendChild(pad);
     });
   }
@@ -452,25 +474,39 @@
     blackRow.innerHTML = '';
     const base = state.keyboardBaseMidi;
 
-    WHITE_OFFSETS.forEach((off, i) => {
-      const key = document.createElement('div');
-      key.className = 'key';
-      key.textContent = WHITE_NAMES[i];
-      key.dataset.midi = base + off;
-      wireKey(key);
-      whiteRow.appendChild(key);
-    });
+    const totalWhite = KEYBOARD_OCTAVES * OCTAVE_WHITE_OFFSETS.length + 1;
+    for (let oct = 0; oct < KEYBOARD_OCTAVES; oct++) {
+      OCTAVE_WHITE_OFFSETS.forEach((off, i) => {
+        const key = document.createElement('div');
+        key.className = 'key';
+        key.textContent = OCTAVE_WHITE_NAMES[i];
+        key.dataset.midi = base + oct * 12 + off;
+        wireKey(key);
+        whiteRow.appendChild(key);
+      });
+    }
+    const topKey = document.createElement('div');
+    topKey.className = 'key';
+    topKey.textContent = 'C';
+    topKey.dataset.midi = base + KEYBOARD_OCTAVES * 12;
+    wireKey(topKey);
+    whiteRow.appendChild(topKey);
 
-    BLACK_OFFSETS.forEach((off, i) => {
-      const key = document.createElement('div');
-      key.className = 'key';
-      key.dataset.midi = base + off;
-      key.style.left = ((BLACK_AFTER_WHITE_IDX[i] + 1) / WHITE_OFFSETS.length) * 100 + '%';
-      wireKey(key);
-      blackRow.appendChild(key);
-    });
+    for (let oct = 0; oct < KEYBOARD_OCTAVES; oct++) {
+      OCTAVE_BLACK_OFFSETS.forEach((off, i) => {
+        const key = document.createElement('div');
+        key.className = 'key';
+        key.dataset.midi = base + oct * 12 + off;
+        const whiteIdxGlobal = oct * OCTAVE_WHITE_OFFSETS.length + OCTAVE_BLACK_AFTER_IDX[i];
+        key.style.left = ((whiteIdxGlobal + 1) / totalWhite) * 100 + '%';
+        wireKey(key);
+        blackRow.appendChild(key);
+      });
+    }
 
-    el.octaveLabel.textContent = 'C' + (Math.floor(base / 12) - 1);
+    const lowName = 'C' + (Math.floor(base / 12) - 1);
+    const highName = 'C' + (Math.floor((base + KEYBOARD_OCTAVES * 12) / 12) - 1);
+    el.octaveLabel.textContent = lowName + '–' + highName;
   }
 
   function wireKey(key) {
@@ -515,11 +551,11 @@
       renderKeyboard();
     });
     el.octDownBtn.addEventListener('click', () => {
-      state.keyboardBaseMidi = Math.max(24, state.keyboardBaseMidi - 12);
+      state.keyboardBaseMidi = Math.max(12, state.keyboardBaseMidi - 12);
       renderKeyboard();
     });
     el.octUpBtn.addEventListener('click', () => {
-      state.keyboardBaseMidi = Math.min(96, state.keyboardBaseMidi + 12);
+      state.keyboardBaseMidi = Math.min(72, state.keyboardBaseMidi + 12);
       renderKeyboard();
     });
   }
@@ -1617,6 +1653,14 @@
 
   window.addEventListener('beforeunload', () => {
     if (state.micStream) state.micStream.getTracks().forEach((t) => t.stop());
+  });
+
+  // A long press on a pad/key would otherwise pop up the browser's
+  // text-selection or link/context menu instead of just playing the sound.
+  document.addEventListener('contextmenu', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
   });
 
   updateLoopLengthDisplay();
