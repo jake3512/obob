@@ -33,21 +33,47 @@
     instPitch: $('instPitch'),
     instPitchVal: $('instPitchVal'),
     instVol: $('instVol'),
+    instTabs: $('instTabs'),
     touchpadGrid: $('touchpadGrid'),
+    bassFretboard: $('bassFretboard'),
+    guitarFretboard: $('guitarFretboard'),
+    voiceSelect: $('voiceSelect'),
+    octDownBtn: $('octDownBtn'),
+    octUpBtn: $('octUpBtn'),
+    octaveLabel: $('octaveLabel'),
+    pianoKeys: $('pianoKeys'),
   };
 
-  const INSTRUMENTS = [
-    { id: 'kick', name: '킥', icon: '🥁', cat: 'perc', color: '#ff5470', trigger: (t) => playKick(t) },
-    { id: 'snare', name: '스네어', icon: '🪘', cat: 'perc', color: '#ff6c9c', trigger: (t) => playSnare(t) },
-    { id: 'hatC', name: '하이햇C', icon: '🎩', cat: 'perc', color: '#ffc857', trigger: (t) => playHat(t, false) },
-    { id: 'hatO', name: '하이햇O', icon: '👒', cat: 'perc', color: '#ffd97d', trigger: (t) => playHat(t, true) },
-    { id: 'clap', name: '클랩', icon: '👏', cat: 'perc', color: '#47e0a4', trigger: (t) => playClap(t) },
-    { id: 'tom', name: '탐', icon: '🔔', cat: 'perc', color: '#4fd6e8', trigger: (t) => playTom(t) },
-    { id: 'bass', name: '베이스', icon: '🎸', cat: 'melodic', color: '#6c8cff', kind: 'bass', baseFreq: 55 },
-    { id: 'guitar', name: '기타', icon: '🪕', cat: 'melodic', color: '#8c7bff', kind: 'guitar', baseFreq: 196 },
-    { id: 'lead', name: '리드신스', icon: '🌀', cat: 'melodic', color: '#b48cff', kind: 'lead', baseFreq: 330 },
-    { id: 'epiano', name: 'EP', icon: '🎹', cat: 'melodic', color: '#d68cff', kind: 'epiano', baseFreq: 261.63 },
+  const DRUM_PADS = [
+    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', trigger: (t) => playHat(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', trigger: (t) => playHat(t, true) },
+    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', trigger: (t) => playSnare(t) },
+    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', trigger: (t) => playTom(t) },
+    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', trigger: (t) => playKick(t) },
+    { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', trigger: (t) => playClap(t) },
   ];
+
+  // Tab (high) to bottom, matching standard tablature string order.
+  const BASS_STRINGS = [
+    { name: 'G', open: 98.0 },
+    { name: 'D', open: 73.42 },
+    { name: 'A', open: 55.0 },
+    { name: 'E', open: 41.2 },
+  ];
+  const GUITAR_STRINGS = [
+    { name: 'e', open: 329.63 },
+    { name: 'B', open: 246.94 },
+    { name: 'G', open: 196.0 },
+    { name: 'D', open: 146.83 },
+    { name: 'A', open: 110.0 },
+    { name: 'E', open: 82.41 },
+  ];
+  const FRET_COUNT = 12;
+  const FRET_MARKERS = [0, 3, 5, 7, 9, 12];
+  const WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12];
+  const WHITE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'];
+  const BLACK_OFFSETS = [1, 3, 6, 8, 10];
+  const BLACK_AFTER_WHITE_IDX = [0, 1, 3, 4, 5];
 
   const state = {
     ctx: null,
@@ -74,6 +100,9 @@
     instPitchSemis: 0,
     noiseBuffer: null,
     activeVoices: new Map(),
+    activeStrums: new Map(),
+    keyboardVoice: 'epiano',
+    keyboardBaseMidi: 60,
   };
 
   function nextBoundary(now, epoch, cycleLen, strict) {
@@ -285,6 +314,8 @@
     osc.stop(time + envTime(0.35));
   }
 
+  // Sustained voice (piano-style keys): held while the key is pressed, matches
+  // how a real keyboard/piano note rings for as long as the key stays down.
   function startMelodicVoice(kind, freq) {
     const ctx = state.ctx;
     const now = ctx.currentTime;
@@ -295,27 +326,7 @@
     let osc1 = null;
     let osc2 = null;
 
-    if (kind === 'bass') {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      filter.type = 'lowpass';
-      filter.frequency.value = 700;
-      filter.Q.value = 1;
-      osc1.connect(filter);
-    } else if (kind === 'guitar') {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      osc2 = ctx.createOscillator();
-      osc2.type = 'sawtooth';
-      osc2.frequency.value = freq * 1.004;
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(4000, now);
-      filter.frequency.exponentialRampToValueAtTime(900, now + 0.3);
-      osc1.connect(filter);
-      osc2.connect(filter);
-    } else if (kind === 'lead') {
+    if (kind === 'lead') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
       osc1.frequency.value = freq;
@@ -350,13 +361,6 @@
     return { osc1, osc2, gain };
   }
 
-  function bendMelodicVoice(voice, semis) {
-    const t = state.ctx.currentTime;
-    const cents = semis * 100;
-    voice.osc1.detune.setTargetAtTime(cents, t, 0.01);
-    if (voice.osc2) voice.osc2.detune.setTargetAtTime(cents, t, 0.01);
-  }
-
   function stopMelodicVoice(voice) {
     const ctx = state.ctx;
     const now = ctx.currentTime;
@@ -369,14 +373,6 @@
     });
   }
 
-  function darken(hex, factor) {
-    const c = hex.replace('#', '');
-    const r = Math.round(parseInt(c.substring(0, 2), 16) * factor);
-    const g = Math.round(parseInt(c.substring(2, 4), 16) * factor);
-    const b = Math.round(parseInt(c.substring(4, 6), 16) * factor);
-    return `rgb(${r},${g},${b})`;
-  }
-
   function releaseVoiceForPointer(pointerId) {
     const rec = state.activeVoices.get(pointerId);
     if (!rec) return;
@@ -385,8 +381,66 @@
     state.activeVoices.delete(pointerId);
   }
 
-  function wirePad(pad, inst) {
-    if (inst.cat === 'perc') {
+  // Plucked string (bass / guitar): a single decaying note, like a real
+  // string set ringing by a finger or pick - it does not sustain just
+  // because a touch stays on the fretboard.
+  function playPluckedString(kind, freq, velocity) {
+    const ctx = state.ctx;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    const decay = envTime(kind === 'bass' ? 1.1 : 0.9);
+    let osc1;
+    let osc2 = null;
+    if (kind === 'bass') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      filter.frequency.setValueAtTime(1200, now);
+      filter.frequency.exponentialRampToValueAtTime(180, now + decay);
+      filter.Q.value = 0.8;
+      osc1.connect(filter);
+    } else {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = freq * 1.005;
+      filter.frequency.setValueAtTime(4500, now);
+      filter.frequency.exponentialRampToValueAtTime(500, now + decay);
+      filter.Q.value = 0.6;
+      osc1.connect(filter);
+      osc2.connect(filter);
+    }
+    filter.connect(gain);
+    gain.connect(state.instrumentBus);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.05, 0.9 * velocity), now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + decay);
+    osc1.start(now);
+    osc1.stop(now + decay + 0.05);
+    if (osc2) { osc2.start(now); osc2.stop(now + decay + 0.05); }
+  }
+
+  function darken(hex, factor) {
+    const c = hex.replace('#', '');
+    const r = Math.round(parseInt(c.substring(0, 2), 16) * factor);
+    const g = Math.round(parseInt(c.substring(2, 4), 16) * factor);
+    const b = Math.round(parseInt(c.substring(4, 6), 16) * factor);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function buildDrumPads() {
+    el.touchpadGrid.innerHTML = '';
+    DRUM_PADS.forEach((inst) => {
+      const pad = document.createElement('button');
+      pad.type = 'button';
+      pad.className = 'pad';
+      pad.style.setProperty('--pad-color', inst.color);
+      pad.style.setProperty('--pad-color-dark', darken(inst.color, 0.4));
+      pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span><span class="pad-cat">TAP</span>`;
       pad.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         if (!state.started) return;
@@ -394,39 +448,173 @@
         pad.classList.add('active');
         setTimeout(() => pad.classList.remove('active'), 120);
       });
-      return;
-    }
-    pad.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      if (!state.started) return;
-      pad.setPointerCapture(e.pointerId);
-      const voice = startMelodicVoice(inst.kind, noteFreq(inst.baseFreq));
-      state.activeVoices.set(e.pointerId, { voice, pad, startY: e.clientY, startedAt: performance.now() });
-      pad.classList.add('active');
+      el.touchpadGrid.appendChild(pad);
     });
-    pad.addEventListener('pointermove', (e) => {
-      const rec = state.activeVoices.get(e.pointerId);
-      if (!rec) return;
-      const dy = rec.startY - e.clientY;
-      const semis = Math.max(-7, Math.min(7, dy / 8));
-      bendMelodicVoice(rec.voice, semis);
-    });
-    pad.addEventListener('pointerup', (e) => releaseVoiceForPointer(e.pointerId));
-    pad.addEventListener('pointercancel', (e) => releaseVoiceForPointer(e.pointerId));
-    pad.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
   }
 
-  function buildTouchpad() {
-    el.touchpadGrid.innerHTML = '';
-    INSTRUMENTS.forEach((inst) => {
-      const pad = document.createElement('button');
-      pad.type = 'button';
-      pad.className = 'pad';
-      pad.style.setProperty('--pad-color', inst.color);
-      pad.style.setProperty('--pad-color-dark', darken(inst.color, 0.4));
-      pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span><span class="pad-cat">${inst.cat === 'perc' ? 'TAP' : 'HOLD'}</span>`;
-      wirePad(pad, inst);
-      el.touchpadGrid.appendChild(pad);
+  // ---- Fretboard (bass / guitar): pluck a string, drag across strings to
+  // strum a chord, drag along one string to slide/run - mirrors how a real
+  // fretted string instrument is actually played with the fingers.
+  function buildFretboardDOM(container, strings, color) {
+    container.innerHTML = '';
+    container.style.setProperty('--pad-color', color);
+    strings.forEach((s) => {
+      const row = document.createElement('div');
+      row.className = 'string-row';
+      const label = document.createElement('div');
+      label.className = 'string-label';
+      label.textContent = s.name;
+      const track = document.createElement('div');
+      track.className = 'string-track';
+      row.appendChild(label);
+      row.appendChild(track);
+      container.appendChild(row);
+    });
+    const fretLabels = document.createElement('div');
+    fretLabels.className = 'fret-labels';
+    FRET_MARKERS.forEach((f) => {
+      const span = document.createElement('span');
+      span.textContent = f;
+      span.style.left = (f / FRET_COUNT) * 100 + '%';
+      fretLabels.appendChild(span);
+    });
+    container.appendChild(fretLabels);
+  }
+
+  function attachFretboard(container, strings, kind) {
+    const tracks = Array.from(container.querySelectorAll('.string-track'));
+
+    function stringIndexAt(clientY) {
+      const rect = container.getBoundingClientRect();
+      const relY = Math.min(rect.height - 1, Math.max(0, clientY - rect.top));
+      return Math.min(strings.length - 1, Math.floor((relY / rect.height) * strings.length));
+    }
+    function fretAt(clientX) {
+      const rect = container.getBoundingClientRect();
+      const labelWidth = 30;
+      const relX = Math.min(rect.width - labelWidth - 1, Math.max(0, clientX - rect.left - labelWidth));
+      const trackWidth = rect.width - labelWidth;
+      return Math.round((relX / trackWidth) * FRET_COUNT);
+    }
+    function pluck(stringIdx, fret, velocity) {
+      const freq = noteFreq(strings[stringIdx].open * Math.pow(2, fret / 12));
+      playPluckedString(kind, freq, velocity);
+      const track = tracks[stringIdx];
+      track.classList.remove('plucked');
+      void track.offsetWidth;
+      track.classList.add('plucked');
+    }
+
+    container.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!state.started) return;
+      container.setPointerCapture(e.pointerId);
+      const sIdx = stringIndexAt(e.clientY);
+      const fret = fretAt(e.clientX);
+      pluck(sIdx, fret, 1);
+      state.activeStrums.set(e.pointerId, { stringIdx: sIdx, fret });
+    });
+    container.addEventListener('pointermove', (e) => {
+      const rec = state.activeStrums.get(e.pointerId);
+      if (!rec) return;
+      const sIdx = stringIndexAt(e.clientY);
+      const fret = fretAt(e.clientX);
+      if (sIdx !== rec.stringIdx || fret !== rec.fret) {
+        pluck(sIdx, fret, sIdx !== rec.stringIdx ? 0.85 : 0.55);
+        rec.stringIdx = sIdx;
+        rec.fret = fret;
+      }
+    });
+    const release = (e) => state.activeStrums.delete(e.pointerId);
+    container.addEventListener('pointerup', release);
+    container.addEventListener('pointercancel', release);
+    container.addEventListener('lostpointercapture', release);
+  }
+
+  function buildBassAndGuitar() {
+    buildFretboardDOM(el.bassFretboard, BASS_STRINGS, '#6c8cff');
+    attachFretboard(el.bassFretboard, BASS_STRINGS, 'bass');
+    buildFretboardDOM(el.guitarFretboard, GUITAR_STRINGS, '#b48cff');
+    attachFretboard(el.guitarFretboard, GUITAR_STRINGS, 'guitar');
+  }
+
+  // ---- Piano keyboard (lead / e-piano): real multi-touch keys, so several
+  // fingers held down together play an actual chord, and octave buttons move
+  // the playable range the way a keyboard's octave shift would.
+  function midiToFreq(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  function renderKeyboard() {
+    const whiteRow = el.pianoKeys.querySelector('.piano-white-row');
+    const blackRow = el.pianoKeys.querySelector('.piano-black-row');
+    whiteRow.innerHTML = '';
+    blackRow.innerHTML = '';
+    const base = state.keyboardBaseMidi;
+
+    WHITE_OFFSETS.forEach((off, i) => {
+      const key = document.createElement('div');
+      key.className = 'key';
+      key.textContent = WHITE_NAMES[i];
+      key.dataset.midi = base + off;
+      wireKey(key);
+      whiteRow.appendChild(key);
+    });
+
+    BLACK_OFFSETS.forEach((off, i) => {
+      const key = document.createElement('div');
+      key.className = 'key';
+      key.dataset.midi = base + off;
+      key.style.left = ((BLACK_AFTER_WHITE_IDX[i] + 1) / WHITE_OFFSETS.length) * 100 + '%';
+      wireKey(key);
+      blackRow.appendChild(key);
+    });
+
+    el.octaveLabel.textContent = 'C' + (Math.floor(base / 12) - 1);
+  }
+
+  function wireKey(key) {
+    key.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!state.started) return;
+      key.setPointerCapture(e.pointerId);
+      const midi = parseInt(key.dataset.midi, 10);
+      const voice = startMelodicVoice(state.keyboardVoice, noteFreq(midiToFreq(midi)));
+      state.activeVoices.set(e.pointerId, { voice, pad: key, startedAt: performance.now() });
+      key.classList.add('active');
+    });
+    key.addEventListener('pointerup', (e) => releaseVoiceForPointer(e.pointerId));
+    key.addEventListener('pointercancel', (e) => releaseVoiceForPointer(e.pointerId));
+    key.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
+  }
+
+  function wireKeyboardControls() {
+    el.voiceSelect.addEventListener('click', (e) => {
+      const btn = e.target.closest('.voice-btn');
+      if (!btn) return;
+      state.keyboardVoice = btn.dataset.voice;
+      el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+    el.octDownBtn.addEventListener('click', () => {
+      state.keyboardBaseMidi = Math.max(24, state.keyboardBaseMidi - 12);
+      renderKeyboard();
+    });
+    el.octUpBtn.addEventListener('click', () => {
+      state.keyboardBaseMidi = Math.min(96, state.keyboardBaseMidi + 12);
+      renderKeyboard();
+    });
+  }
+
+  // ---- Instrument tabs ----
+  function wireInstrumentTabs() {
+    el.instTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.inst-tab');
+      if (!btn) return;
+      const cat = btn.dataset.cat;
+      el.instTabs.querySelectorAll('.inst-tab').forEach((b) => b.classList.toggle('active', b === btn));
+      el.instrumentsPanel.querySelectorAll('.inst-view').forEach((v) => {
+        v.hidden = v.dataset.cat !== cat;
+      });
     });
   }
 
@@ -929,7 +1117,9 @@
     state.started = true;
 
     buildTracks();
-    buildTouchpad();
+    buildDrumPads();
+    buildBassAndGuitar();
+    renderKeyboard();
 
     el.bpmInput.disabled = true;
     el.beatsInput.disabled = true;
@@ -958,6 +1148,7 @@
     });
     state.activeVoices.forEach((rec) => { try { rec.voice.gain.disconnect(); } catch (e) { /* noop */ } });
     state.activeVoices.clear();
+    state.activeStrums.clear();
     if (state.micStream) state.micStream.getTracks().forEach((tr) => tr.stop());
     if (state.ctx) state.ctx.close();
 
@@ -977,6 +1168,14 @@
     el.transport.hidden = true;
     el.instrumentsPanel.hidden = true;
     el.touchpadGrid.innerHTML = '';
+    el.bassFretboard.innerHTML = '';
+    el.guitarFretboard.innerHTML = '';
+    el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
+    state.keyboardVoice = 'epiano';
+    state.keyboardBaseMidi = 60;
+    el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b.dataset.voice === 'epiano'));
+    el.instTabs.querySelectorAll('.inst-tab').forEach((b) => b.classList.toggle('active', b.dataset.cat === 'drums'));
+    el.instrumentsPanel.querySelectorAll('.inst-view').forEach((v) => { v.hidden = v.dataset.cat !== 'drums'; });
     el.bpmInput.disabled = false;
     el.beatsInput.disabled = false;
     el.tapTempoBtn.disabled = false;
@@ -1038,5 +1237,7 @@
   wireTapTempo();
   wireTransport();
   wireInstrumentControls();
+  wireInstrumentTabs();
+  wireKeyboardControls();
   wireKeyboard();
 })();
