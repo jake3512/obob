@@ -189,6 +189,75 @@ body {
   50% { opacity: 0.55; }
 }
 
+.val-badge {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.instruments-panel {
+  max-width: 980px;
+  margin: 0 auto 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.instruments-panel h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+.instruments-panel .hint {
+  margin: 0 0 14px;
+}
+
+.instrument-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.touchpad-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.pad {
+  position: relative;
+  aspect-ratio: 1 / 0.85;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(160deg, var(--pad-color, var(--accent)), var(--pad-color-dark, #333));
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+  transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease;
+}
+.pad .pad-icon { font-size: 1.6rem; line-height: 1; }
+.pad .pad-cat { font-size: 0.62rem; font-weight: 400; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; }
+.pad.active,
+.pad:active {
+  transform: translateY(3px) scale(0.97);
+  box-shadow: 0 0 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+  filter: brightness(1.25);
+}
+
 .app-footer {
   text-align: center;
   color: var(--text-dim);
@@ -199,4 +268,5 @@ body {
 @media (max-width: 600px) {
   .setup-panel, .transport { padding: 14px; }
   .field.grow { flex-direction: column; align-items: stretch; }
+  .touchpad-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }

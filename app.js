@@ -27,7 +27,27 @@
     micMeterFill: $('micMeterFill'),
     tracksGrid: $('tracksGrid'),
     trackTemplate: $('trackTemplate'),
+    instrumentsPanel: $('instrumentsPanel'),
+    instSpeed: $('instSpeed'),
+    instSpeedVal: $('instSpeedVal'),
+    instPitch: $('instPitch'),
+    instPitchVal: $('instPitchVal'),
+    instVol: $('instVol'),
+    touchpadGrid: $('touchpadGrid'),
   };
+
+  const INSTRUMENTS = [
+    { id: 'kick', name: '킥', icon: '🥁', cat: 'perc', color: '#ff5470', trigger: (t) => playKick(t) },
+    { id: 'snare', name: '스네어', icon: '🪘', cat: 'perc', color: '#ff6c9c', trigger: (t) => playSnare(t) },
+    { id: 'hatC', name: '하이햇C', icon: '🎩', cat: 'perc', color: '#ffc857', trigger: (t) => playHat(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', cat: 'perc', color: '#ffd97d', trigger: (t) => playHat(t, true) },
+    { id: 'clap', name: '클랩', icon: '👏', cat: 'perc', color: '#47e0a4', trigger: (t) => playClap(t) },
+    { id: 'tom', name: '탐', icon: '🔔', cat: 'perc', color: '#4fd6e8', trigger: (t) => playTom(t) },
+    { id: 'bass', name: '베이스', icon: '🎸', cat: 'melodic', color: '#6c8cff', kind: 'bass', baseFreq: 55 },
+    { id: 'guitar', name: '기타', icon: '🪕', cat: 'melodic', color: '#8c7bff', kind: 'guitar', baseFreq: 196 },
+    { id: 'lead', name: '리드신스', icon: '🌀', cat: 'melodic', color: '#b48cff', kind: 'lead', baseFreq: 330 },
+    { id: 'epiano', name: 'EP', icon: '🎹', cat: 'melodic', color: '#d68cff', kind: 'epiano', baseFreq: 261.63 },
+  ];
 
   const state = {
     ctx: null,
@@ -49,6 +69,11 @@
     rafId: null,
     tracks: [],
     tapTimes: [],
+    instrumentBus: null,
+    instSpeed: 1,
+    instPitchSemis: 0,
+    noiseBuffer: null,
+    activeVoices: new Map(),
   };
 
   function nextBoundary(now, epoch, cycleLen, strict) {
@@ -143,6 +168,282 @@
     }
   }
 
+  // ---- Instrument synthesis (10 band instruments, no samples/external gear needed) ----
+  function instMultiplier() {
+    return state.instSpeed * Math.pow(2, state.instPitchSemis / 12);
+  }
+  function noteFreq(base) {
+    return base * instMultiplier();
+  }
+  function envTime(t) {
+    return t / state.instSpeed;
+  }
+  function ensureNoiseBuffer() {
+    if (state.noiseBuffer) return state.noiseBuffer;
+    const len = state.ctx.sampleRate * 2;
+    const buf = state.ctx.createBuffer(1, len, state.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    state.noiseBuffer = buf;
+    return buf;
+  }
+
+  function playKick(time) {
+    const ctx = state.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    const g = ctx.createGain();
+    osc.frequency.setValueAtTime(noteFreq(150), time);
+    osc.frequency.exponentialRampToValueAtTime(noteFreq(45), time + envTime(0.15));
+    g.gain.setValueAtTime(1, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.35));
+    osc.connect(g);
+    g.connect(state.instrumentBus);
+    osc.start(time);
+    osc.stop(time + envTime(0.4));
+  }
+
+  function playSnare(time) {
+    const ctx = state.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = ensureNoiseBuffer();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1000;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(1, time);
+    ng.gain.exponentialRampToValueAtTime(0.01, time + envTime(0.2));
+    noise.connect(hp);
+    hp.connect(ng);
+    ng.connect(state.instrumentBus);
+    noise.start(time);
+    noise.stop(time + envTime(0.2) + 0.02);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = noteFreq(180);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.7, time);
+    og.gain.exponentialRampToValueAtTime(0.01, time + envTime(0.12));
+    osc.connect(og);
+    og.connect(state.instrumentBus);
+    osc.start(time);
+    osc.stop(time + envTime(0.15));
+  }
+
+  function playHat(time, open) {
+    const ctx = state.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = ensureNoiseBuffer();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 7000;
+    const g = ctx.createGain();
+    const dur = open ? envTime(0.5) : envTime(0.08);
+    g.gain.setValueAtTime(0.8, time);
+    g.gain.exponentialRampToValueAtTime(0.01, time + dur);
+    noise.connect(hp);
+    hp.connect(g);
+    g.connect(state.instrumentBus);
+    noise.start(time);
+    noise.stop(time + dur + 0.02);
+  }
+
+  function playClap(time) {
+    const ctx = state.ctx;
+    for (let i = 0; i < 3; i++) {
+      const t = time + i * envTime(0.02);
+      const noise = ctx.createBufferSource();
+      noise.buffer = ensureNoiseBuffer();
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1500;
+      bp.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.9, t);
+      g.gain.exponentialRampToValueAtTime(0.01, t + envTime(0.08));
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(state.instrumentBus);
+      noise.start(t);
+      noise.stop(t + envTime(0.1));
+    }
+  }
+
+  function playTom(time) {
+    const ctx = state.ctx;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    const g = ctx.createGain();
+    osc.frequency.setValueAtTime(noteFreq(200), time);
+    osc.frequency.exponentialRampToValueAtTime(noteFreq(90), time + envTime(0.25));
+    g.gain.setValueAtTime(1, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.3));
+    osc.connect(g);
+    g.connect(state.instrumentBus);
+    osc.start(time);
+    osc.stop(time + envTime(0.35));
+  }
+
+  function startMelodicVoice(kind, freq) {
+    const ctx = state.ctx;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.9, now + 0.02);
+    const filter = ctx.createBiquadFilter();
+    let osc1 = null;
+    let osc2 = null;
+
+    if (kind === 'bass') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      filter.type = 'lowpass';
+      filter.frequency.value = 700;
+      filter.Q.value = 1;
+      osc1.connect(filter);
+    } else if (kind === 'guitar') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = freq * 1.004;
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(4000, now);
+      filter.frequency.exponentialRampToValueAtTime(900, now + 0.3);
+      osc1.connect(filter);
+      osc2.connect(filter);
+    } else if (kind === 'lead') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'square';
+      osc2.frequency.value = freq;
+      filter.type = 'lowpass';
+      filter.frequency.value = 2200;
+      filter.Q.value = 3;
+      osc1.connect(filter);
+      osc2.connect(filter);
+    } else {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.value = freq * 3.01;
+      const overtoneGain = ctx.createGain();
+      overtoneGain.gain.value = 0.15;
+      osc2.connect(overtoneGain);
+      overtoneGain.connect(filter);
+      filter.type = 'lowpass';
+      filter.frequency.value = 6000;
+      osc1.connect(filter);
+    }
+
+    filter.connect(gain);
+    gain.connect(state.instrumentBus);
+    osc1.start(now);
+    if (osc2) osc2.start(now);
+    return { osc1, osc2, gain };
+  }
+
+  function bendMelodicVoice(voice, semis) {
+    const t = state.ctx.currentTime;
+    const cents = semis * 100;
+    voice.osc1.detune.setTargetAtTime(cents, t, 0.01);
+    if (voice.osc2) voice.osc2.detune.setTargetAtTime(cents, t, 0.01);
+  }
+
+  function stopMelodicVoice(voice) {
+    const ctx = state.ctx;
+    const now = ctx.currentTime;
+    const release = 0.15;
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
+    voice.gain.gain.linearRampToValueAtTime(0.0001, now + release);
+    [voice.osc1, voice.osc2].forEach((o) => {
+      if (o) { try { o.stop(now + release + 0.05); } catch (e) { /* noop */ } }
+    });
+  }
+
+  function darken(hex, factor) {
+    const c = hex.replace('#', '');
+    const r = Math.round(parseInt(c.substring(0, 2), 16) * factor);
+    const g = Math.round(parseInt(c.substring(2, 4), 16) * factor);
+    const b = Math.round(parseInt(c.substring(4, 6), 16) * factor);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function releaseVoiceForPointer(pointerId) {
+    const rec = state.activeVoices.get(pointerId);
+    if (!rec) return;
+    stopMelodicVoice(rec.voice);
+    rec.pad.classList.remove('active');
+    state.activeVoices.delete(pointerId);
+  }
+
+  function wirePad(pad, inst) {
+    if (inst.cat === 'perc') {
+      pad.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (!state.started) return;
+        inst.trigger(state.ctx.currentTime + 0.005);
+        pad.classList.add('active');
+        setTimeout(() => pad.classList.remove('active'), 120);
+      });
+      return;
+    }
+    pad.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!state.started) return;
+      pad.setPointerCapture(e.pointerId);
+      const voice = startMelodicVoice(inst.kind, noteFreq(inst.baseFreq));
+      state.activeVoices.set(e.pointerId, { voice, pad, startY: e.clientY, startedAt: performance.now() });
+      pad.classList.add('active');
+    });
+    pad.addEventListener('pointermove', (e) => {
+      const rec = state.activeVoices.get(e.pointerId);
+      if (!rec) return;
+      const dy = rec.startY - e.clientY;
+      const semis = Math.max(-7, Math.min(7, dy / 8));
+      bendMelodicVoice(rec.voice, semis);
+    });
+    pad.addEventListener('pointerup', (e) => releaseVoiceForPointer(e.pointerId));
+    pad.addEventListener('pointercancel', (e) => releaseVoiceForPointer(e.pointerId));
+    pad.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
+  }
+
+  function buildTouchpad() {
+    el.touchpadGrid.innerHTML = '';
+    INSTRUMENTS.forEach((inst) => {
+      const pad = document.createElement('button');
+      pad.type = 'button';
+      pad.className = 'pad';
+      pad.style.setProperty('--pad-color', inst.color);
+      pad.style.setProperty('--pad-color-dark', darken(inst.color, 0.4));
+      pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span><span class="pad-cat">${inst.cat === 'perc' ? 'TAP' : 'HOLD'}</span>`;
+      wirePad(pad, inst);
+      el.touchpadGrid.appendChild(pad);
+    });
+  }
+
+  function wireInstrumentControls() {
+    el.instSpeed.addEventListener('input', () => {
+      state.instSpeed = parseFloat(el.instSpeed.value);
+      el.instSpeedVal.textContent = state.instSpeed.toFixed(2) + 'x';
+    });
+    el.instPitch.addEventListener('input', () => {
+      state.instPitchSemis = parseInt(el.instPitch.value, 10);
+      el.instPitchVal.textContent = (state.instPitchSemis > 0 ? '+' : '') + state.instPitchSemis + 'st';
+    });
+    el.instVol.addEventListener('input', () => {
+      if (state.instrumentBus) state.instrumentBus.gain.value = parseFloat(el.instVol.value);
+    });
+  }
+
   // ---- Track lifecycle ----
   function makeTrack(index) {
     const frag = el.trackTemplate.content.cloneNode(true);
@@ -164,17 +465,23 @@
       clearBtn: card.querySelector('.track-clear'),
       downloadBtn: card.querySelector('.track-download'),
       volInput: card.querySelector('.track-vol'),
+      speedInput: card.querySelector('.track-speed'),
+      speedValEl: card.querySelector('.track-speed-val'),
+      pitchInput: card.querySelector('.track-pitch'),
+      pitchValEl: card.querySelector('.track-pitch-val'),
       gainNode: state.ctx.createGain(),
       state: 'empty',
       buffer: null,
       n: 0,
+      speed: 1,
+      pitchSemis: 0,
       startBoundary: 0,
       recordStartBoundary: 0,
       mediaRecorder: null,
       chunks: [],
       sourceNode: null,
       pendingOverdub: false,
-      overdubMixDest: null,
+      recordMixDest: null,
       isMuted: false,
       armTimeoutId: null,
       stopTimeoutId: null,
@@ -191,6 +498,16 @@
     track.downloadBtn.addEventListener('click', () => onDownloadClick(track));
     track.volInput.addEventListener('input', () => {
       if (!track.isMuted) track.gainNode.gain.value = parseFloat(track.volInput.value);
+    });
+    track.speedInput.addEventListener('input', () => {
+      track.speed = parseFloat(track.speedInput.value);
+      track.speedValEl.textContent = track.speed.toFixed(2) + 'x';
+      if (track.sourceNode) track.sourceNode.playbackRate.value = track.speed;
+    });
+    track.pitchInput.addEventListener('input', () => {
+      track.pitchSemis = parseInt(track.pitchInput.value, 10);
+      track.pitchValEl.textContent = (track.pitchSemis > 0 ? '+' : '') + track.pitchSemis + 'st';
+      if (track.sourceNode) track.sourceNode.detune.value = track.pitchSemis * 100;
     });
 
     el.tracksGrid.appendChild(card);
@@ -293,24 +610,27 @@
     track.recordStartBoundary = boundary;
     track.chunks = [];
 
-    let streamToRecord;
+    const mixDest = state.ctx.createMediaStreamDestination();
+    state.micSource.connect(mixDest);
+    state.instrumentBus.connect(mixDest);
     if (track.pendingOverdub && track.buffer && track.sourceNode) {
-      const mixDest = state.ctx.createMediaStreamDestination();
-      state.micSource.connect(mixDest);
       track.sourceNode.connect(mixDest);
-      track.overdubMixDest = mixDest;
-      streamToRecord = mixDest.stream;
-    } else {
-      streamToRecord = state.micStream;
     }
+    track.recordMixDest = mixDest;
 
     const mimeType = pickMimeType();
     try {
       track.mediaRecorder = mimeType
-        ? new MediaRecorder(streamToRecord, { mimeType })
-        : new MediaRecorder(streamToRecord);
+        ? new MediaRecorder(mixDest.stream, { mimeType })
+        : new MediaRecorder(mixDest.stream);
     } catch (err) {
       console.error('MediaRecorder init failed', err);
+      try { state.micSource.disconnect(mixDest); } catch (e) { /* noop */ }
+      try { state.instrumentBus.disconnect(mixDest); } catch (e) { /* noop */ }
+      if (track.pendingOverdub && track.sourceNode) {
+        try { track.sourceNode.disconnect(mixDest); } catch (e) { /* noop */ }
+      }
+      track.recordMixDest = null;
       track.state = track.buffer ? 'stopped' : 'empty';
       updateTrackUI(track);
       return;
@@ -337,10 +657,13 @@
   }
 
   async function finishRecording(track) {
-    if (track.overdubMixDest) {
-      try { track.sourceNode && track.sourceNode.disconnect(track.overdubMixDest); } catch (e) { /* noop */ }
-      try { state.micSource.disconnect(track.overdubMixDest); } catch (e) { /* noop */ }
-      track.overdubMixDest = null;
+    if (track.recordMixDest) {
+      try { state.micSource.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      try { state.instrumentBus.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      if (track.pendingOverdub && track.sourceNode) {
+        try { track.sourceNode.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      }
+      track.recordMixDest = null;
     }
 
     const mimeType = (track.mediaRecorder && track.mediaRecorder.mimeType) || 'audio/webm';
@@ -394,6 +717,8 @@
     const source = state.ctx.createBufferSource();
     source.buffer = track.buffer;
     source.loop = true;
+    source.playbackRate.value = track.speed;
+    source.detune.value = track.pitchSemis * 100;
     source.connect(track.gainNode);
     const cycleLen = track.n * state.loopLength;
     const startAt = nextBoundary(state.ctx.currentTime, track.startBoundary, cycleLen, false);
@@ -426,10 +751,13 @@
     if (track.mediaRecorder && track.mediaRecorder.state === 'recording') {
       try { track.mediaRecorder.stop(); } catch (e) { /* noop */ }
     }
-    if (track.overdubMixDest) {
-      try { track.sourceNode && track.sourceNode.disconnect(track.overdubMixDest); } catch (e) { /* noop */ }
-      try { state.micSource.disconnect(track.overdubMixDest); } catch (e) { /* noop */ }
-      track.overdubMixDest = null;
+    if (track.recordMixDest) {
+      try { state.micSource.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      try { state.instrumentBus.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      if (track.pendingOverdub && track.sourceNode) {
+        try { track.sourceNode.disconnect(track.recordMixDest); } catch (e) { /* noop */ }
+      }
+      track.recordMixDest = null;
     }
     stopTrackSource(track);
     track.buffer = null;
@@ -543,6 +871,10 @@
           t.progressFillEl.style.width = '0%';
         }
       });
+
+      state.activeVoices.forEach((rec, pointerId) => {
+        if (performance.now() - rec.startedAt > 10000) releaseVoiceForPointer(pointerId);
+      });
     }
     state.rafId = requestAnimationFrame(animate);
   }
@@ -582,6 +914,12 @@
     state.metronomeGain.gain.value = parseFloat(el.metronomeVol.value);
     state.metronomeGain.connect(state.masterGain);
 
+    state.instrumentBus = state.ctx.createGain();
+    state.instrumentBus.gain.value = parseFloat(el.instVol.value);
+    state.instrumentBus.connect(state.masterGain);
+    state.noiseBuffer = null;
+    state.activeVoices = new Map();
+
     state.bpm = Math.max(1, parseInt(el.bpmInput.value, 10) || 100);
     state.beatsPerLoop = Math.max(1, parseInt(el.beatsInput.value, 10) || 8);
     state.loopLength = (state.beatsPerLoop * 60) / state.bpm;
@@ -591,6 +929,7 @@
     state.started = true;
 
     buildTracks();
+    buildTouchpad();
 
     el.bpmInput.disabled = true;
     el.beatsInput.disabled = true;
@@ -599,6 +938,7 @@
     el.resetSessionBtn.hidden = false;
     el.transport.hidden = false;
     el.tracksGrid.hidden = false;
+    el.instrumentsPanel.hidden = false;
     el.setupHint.textContent = `세션 진행 중 — BPM ${state.bpm}, 루프 길이 ${state.loopLength.toFixed(2)}초. 트랙 버튼으로 녹음을 시작하세요.`;
 
     state.schedulerTimer = setInterval(schedulerTick, SCHEDULER_INTERVAL_MS);
@@ -616,6 +956,8 @@
       }
       stopTrackSource(t);
     });
+    state.activeVoices.forEach((rec) => { try { rec.voice.gain.disconnect(); } catch (e) { /* noop */ } });
+    state.activeVoices.clear();
     if (state.micStream) state.micStream.getTracks().forEach((tr) => tr.stop());
     if (state.ctx) state.ctx.close();
 
@@ -625,12 +967,16 @@
     state.micAnalyser = null;
     state.masterGain = null;
     state.metronomeGain = null;
+    state.instrumentBus = null;
+    state.noiseBuffer = null;
     state.started = false;
     state.tracks = [];
 
     el.tracksGrid.innerHTML = '';
     el.tracksGrid.hidden = true;
     el.transport.hidden = true;
+    el.instrumentsPanel.hidden = true;
+    el.touchpadGrid.innerHTML = '';
     el.bpmInput.disabled = false;
     el.beatsInput.disabled = false;
     el.tapTempoBtn.disabled = false;
@@ -641,6 +987,13 @@
     el.playheadFill.style.width = '0%';
     el.loopCounter.textContent = 'Loop 0';
     el.micMeterFill.style.width = '0%';
+    state.instSpeed = 1;
+    state.instPitchSemis = 0;
+    el.instSpeed.value = 1;
+    el.instPitch.value = 0;
+    el.instVol.value = 1;
+    el.instSpeedVal.textContent = '1.00x';
+    el.instPitchVal.textContent = '0st';
   }
 
   function wireTransport() {
@@ -684,5 +1037,6 @@
   wireStepper();
   wireTapTempo();
   wireTransport();
+  wireInstrumentControls();
   wireKeyboard();
 })();
