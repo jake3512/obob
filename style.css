@@ -323,7 +323,7 @@ input, textarea {
   gap: 10px;
   margin-bottom: 10px;
 }
-.voice-select { display: flex; gap: 6px; }
+.voice-select { display: flex; flex-wrap: wrap; gap: 6px; }
 .voice-btn {
   border: 1px solid var(--border);
   background: var(--bg-card);

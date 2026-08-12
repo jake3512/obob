@@ -47,12 +47,15 @@
   // ring for as long as they're held (release fades them out); clap has no
   // natural sustain so it stays a fixed one-shot hit via `trigger`.
   const DRUM_PADS = [
-    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 16, startVoice: (t) => startHatVoice(t, false) },
-    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 34, startVoice: (t) => startHatVoice(t, true) },
-    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 62, startVoice: (t) => startTomVoice(t) },
-    { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', size: 'sm', top: 16, left: 85, trigger: (t) => playClap(t) },
-    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 46, left: 30, startVoice: (t) => startSnareVoice(t) },
-    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 68, left: 58, startVoice: (t) => startKickVoice(t) },
+    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 14, startVoice: (t) => startHatVoice(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 30, startVoice: (t) => startHatVoice(t, true) },
+    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 54, startVoice: (t) => startTomVoice(t) },
+    { id: 'cowbell', name: '카우벨', icon: '🛎️', color: '#ff9d4d', size: 'sm', top: 14, left: 80, startVoice: (t) => startCowbellVoice(t) },
+    { id: 'tambourine', name: '탬버린', icon: '🔘', color: '#a8e063', size: 'sm', top: 46, left: 14, startVoice: (t) => startTambourineVoice(t) },
+    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 48, left: 38, startVoice: (t) => startSnareVoice(t) },
+    { id: 'shaker', name: '셰이커', icon: '🪇', color: '#7fe0c0', size: 'sm', top: 46, left: 82, startVoice: (t) => startShakerVoice(t) },
+    { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', size: 'sm', top: 72, left: 16, trigger: (t) => playClap(t) },
+    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 72, left: 56, startVoice: (t) => startKickVoice(t) },
   ];
 
   const OCTAVE_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11];
@@ -60,7 +63,19 @@
   const OCTAVE_BLACK_OFFSETS = [1, 3, 6, 8, 10];
   const OCTAVE_BLACK_AFTER_IDX = [0, 1, 3, 4, 5];
   const KEYBOARD_OCTAVES = 3;
-  const KEYBOARD_DEFAULT_BASE_MIDI = { bass: 36, guitar: 48, lead: 60, epiano: 60 };
+  const KEYBOARD_DEFAULT_BASE_MIDI = {
+    bass: 36,
+    guitar: 48,
+    lead: 60,
+    epiano: 60,
+    violin: 55,
+    cello: 36,
+    flute: 67,
+    trumpet: 55,
+    saxophone: 52,
+    organ: 48,
+    marimba: 48,
+  };
 
   const state = {
     ctx: null,
@@ -318,10 +333,91 @@
     return { osc1: osc, osc2: null, gain: g };
   }
 
+  function startTambourineVoice(time) {
+    const ctx = state.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = ensureNoiseBuffer();
+    noise.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 7000;
+    bp.Q.value = 2.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.75, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.18, time + envTime(0.35));
+    noise.connect(bp);
+    bp.connect(g);
+    g.connect(state.instrumentBus);
+    noise.start(time);
+    return { osc1: noise, osc2: null, gain: g };
+  }
+
+  function startCowbellVoice(time) {
+    const ctx = state.ctx;
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'square';
+    osc1.frequency.value = noteFreq(800);
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'square';
+    osc2.frequency.value = noteFreq(540);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1400;
+    bp.Q.value = 2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.7, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.15, time + envTime(0.4));
+    osc1.connect(bp);
+    osc2.connect(bp);
+    bp.connect(g);
+    g.connect(state.instrumentBus);
+    osc1.start(time);
+    osc2.start(time);
+    return { osc1, osc2, gain: g };
+  }
+
+  function startShakerVoice(time) {
+    const ctx = state.ctx;
+    const noise = ctx.createBufferSource();
+    noise.buffer = ensureNoiseBuffer();
+    noise.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 4500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.6, time + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.12, time + envTime(0.15));
+    noise.connect(hp);
+    hp.connect(g);
+    g.connect(state.instrumentBus);
+    noise.start(time);
+    return { osc1: noise, osc2: null, gain: g };
+  }
+
+  // A silent-carrier LFO wired into one or more detune AudioParams, for
+  // instruments (violin, cello, flute, sax) that naturally waver in pitch
+  // while a note is held. Returned so the caller can stop it on release.
+  function addVibrato(ctx, now, detuneParams, rateHz, depthCents) {
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = rateHz;
+    const depth = ctx.createGain();
+    depth.gain.value = depthCents;
+    lfo.connect(depth);
+    detuneParams.forEach((p) => depth.connect(p));
+    lfo.start(now);
+    return lfo;
+  }
+
   // Keyboard voices: held while the key is pressed, like any real keyboard
-  // instrument (piano, or a bass/guitar patch played from a keyboard). Bass
-  // and guitar get a plucked attack that decays toward a soft sustain, since
-  // even a held string note keeps ringing down rather than staying flat.
+  // instrument (piano, or a bass/guitar/orchestral patch played from a
+  // keyboard). Plucked/struck kinds (bass, guitar, marimba) decay toward a
+  // soft sustain since even a held note keeps ringing down; bowed/blown
+  // kinds (violin, cello, flute, trumpet, saxophone, organ) hold flat while
+  // pressed, the way a bow or breath sustains a real note.
   function startMelodicVoice(kind, freq) {
     const ctx = state.ctx;
     const now = ctx.currentTime;
@@ -330,6 +426,7 @@
     filter.type = 'lowpass';
     let osc1 = null;
     let osc2 = null;
+    const extra = [];
 
     if (kind === 'bass') {
       osc1 = ctx.createOscillator();
@@ -357,6 +454,22 @@
       gain.gain.setValueAtTime(0.0001, now);
       gain.gain.exponentialRampToValueAtTime(0.9, now + 0.006);
       gain.gain.exponentialRampToValueAtTime(0.3, now + envTime(0.6));
+    } else if (kind === 'marimba') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.value = freq * 3.98;
+      const overtoneGain = ctx.createGain();
+      overtoneGain.gain.value = 0.25;
+      osc2.connect(overtoneGain);
+      overtoneGain.connect(filter);
+      osc1.connect(filter);
+      filter.frequency.value = 3000;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(1, now + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.15, now + envTime(0.5));
     } else if (kind === 'lead') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
@@ -370,6 +483,104 @@
       osc2.connect(filter);
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.9, now + 0.02);
+    } else if (kind === 'violin') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = freq * 1.003;
+      filter.frequency.value = 2600;
+      filter.Q.value = 1;
+      osc1.connect(filter);
+      osc2.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.75, now + 0.09);
+      extra.push(addVibrato(ctx, now, [osc1.detune, osc2.detune], 5.5, 9));
+    } else if (kind === 'cello') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'triangle';
+      osc2.frequency.value = freq * 1.002;
+      filter.frequency.value = 1400;
+      filter.Q.value = 0.8;
+      osc1.connect(filter);
+      osc2.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.8, now + 0.12);
+      extra.push(addVibrato(ctx, now, [osc1.detune, osc2.detune], 4.8, 7));
+    } else if (kind === 'flute') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = freq;
+      filter.frequency.value = 3500;
+      osc1.connect(filter);
+      const breath = ctx.createBufferSource();
+      breath.buffer = ensureNoiseBuffer();
+      breath.loop = true;
+      const breathFilter = ctx.createBiquadFilter();
+      breathFilter.type = 'bandpass';
+      breathFilter.frequency.value = freq * 2;
+      breathFilter.Q.value = 0.7;
+      const breathGain = ctx.createGain();
+      breathGain.gain.value = 0.05;
+      breath.connect(breathFilter);
+      breathFilter.connect(breathGain);
+      breathGain.connect(gain);
+      breath.start(now);
+      extra.push(breath);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.7, now + 0.06);
+      extra.push(addVibrato(ctx, now, [osc1.detune], 5.2, 6));
+    } else if (kind === 'trumpet') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'square';
+      osc2.frequency.value = freq * 1.004;
+      filter.type = 'bandpass';
+      filter.frequency.value = freq * 3;
+      filter.Q.value = 2.5;
+      osc1.connect(filter);
+      osc2.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.85, now + 0.03);
+    } else if (kind === 'saxophone') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      filter.frequency.value = 1600;
+      filter.Q.value = 4;
+      osc1.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.8, now + 0.05);
+      extra.push(addVibrato(ctx, now, [osc1.detune], 5.0, 5));
+    } else if (kind === 'organ') {
+      const ratios = [1, 2, 3, 4, 6];
+      const amps = [0.5, 0.3, 0.18, 0.12, 0.08];
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sine';
+      osc1.frequency.value = freq * ratios[0];
+      const drawbar0 = ctx.createGain();
+      drawbar0.gain.value = amps[0];
+      osc1.connect(drawbar0);
+      drawbar0.connect(gain);
+      for (let i = 1; i < ratios.length; i++) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = freq * ratios[i];
+        const og = ctx.createGain();
+        og.gain.value = amps[i];
+        o.connect(og);
+        og.connect(gain);
+        o.start(now);
+        extra.push(o);
+      }
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.9, now + 0.01);
     } else {
       osc1 = ctx.createOscillator();
       osc1.type = 'sine';
@@ -391,7 +602,7 @@
     gain.connect(state.instrumentBus);
     osc1.start(now);
     if (osc2) osc2.start(now);
-    return { osc1, osc2, gain };
+    return { osc1, osc2, gain, extra };
   }
 
   function stopMelodicVoice(voice) {
@@ -401,7 +612,7 @@
     voice.gain.gain.cancelScheduledValues(now);
     voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
     voice.gain.gain.linearRampToValueAtTime(0.0001, now + release);
-    [voice.osc1, voice.osc2].forEach((o) => {
+    [voice.osc1, voice.osc2, ...(voice.extra || [])].forEach((o) => {
       if (o) { try { o.stop(now + release + 0.05); } catch (e) { /* noop */ } }
     });
   }
