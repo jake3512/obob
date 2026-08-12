@@ -115,7 +115,7 @@
 
 <section class="instruments-panel" id="instrumentsPanel" hidden>
   <h2>🎸 악기 연주</h2>
-  <p class="hint" id="instHint">타악기는 드럼 세트를 탭하거나 누르고 있으면 되고, 음계가 있는 악기(베이스·기타·바이올린·첼로·트럼펫·색소폰·플루트·오르간·마림바·신스리드·일렉피아노)는 건반에서 보이스를 선택해 눌러서 연주하세요(여러 손가락으로 화음도 가능). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
+  <p class="hint" id="instHint">타악기는 드럼 세트를 탭하거나 누르고 있으면 되고, 음계가 있는 악기(기타 6종·베이스·현악기·관악기·오르간·마림바·신스·일렉피아노)는 건반에서 원하는 보이스를 고른 뒤 눌러서 연주하세요(여러 손가락으로 화음도 가능). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
   <div class="instrument-controls">
     <div class="vol-field">
       <span>악기 속도</span>
@@ -142,7 +142,12 @@
     <div class="keys-toolbar">
       <div class="voice-select" id="voiceSelect">
         <button type="button" class="voice-btn" data-voice="bass">베이스</button>
-        <button type="button" class="voice-btn" data-voice="guitar">기타</button>
+        <button type="button" class="voice-btn" data-voice="guitar_acoustic">어쿠스틱 기타</button>
+        <button type="button" class="voice-btn" data-voice="guitar_electric">일렉기타(클린)</button>
+        <button type="button" class="voice-btn" data-voice="guitar_distortion">일렉기타(디스톤)</button>
+        <button type="button" class="voice-btn" data-voice="guitar_nylon">나일론 기타</button>
+        <button type="button" class="voice-btn" data-voice="guitar_12str">12현 기타</button>
+        <button type="button" class="voice-btn" data-voice="guitar_muted">뮤트 기타</button>
         <button type="button" class="voice-btn" data-voice="violin">바이올린</button>
         <button type="button" class="voice-btn" data-voice="cello">첼로</button>
         <button type="button" class="voice-btn" data-voice="trumpet">트럼펫</button>

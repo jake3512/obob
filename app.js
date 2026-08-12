@@ -65,7 +65,12 @@
   const KEYBOARD_OCTAVES = 3;
   const KEYBOARD_DEFAULT_BASE_MIDI = {
     bass: 36,
-    guitar: 48,
+    guitar_acoustic: 48,
+    guitar_electric: 48,
+    guitar_distortion: 48,
+    guitar_nylon: 45,
+    guitar_12str: 48,
+    guitar_muted: 52,
     lead: 60,
     epiano: 60,
     violin: 55,
@@ -84,6 +89,7 @@
     micAnalyser: null,
     meterBuf: null,
     masterGain: null,
+    masterCompressor: null,
     metronomeGain: null,
     bpm: 100,
     beatsPerLoop: 8,
@@ -221,12 +227,34 @@
   function envTime(t) {
     return t / state.instSpeed;
   }
+  // Pink (not white) noise: real acoustic noise sources (breath, brushed
+  // cymbals, shakers) roll off at high frequencies, so raw white noise
+  // through a highpass filter sounds like harsh static in comparison. This
+  // is the standard Paul Kellet approximation (~-3dB/octave).
   function ensureNoiseBuffer() {
     if (state.noiseBuffer) return state.noiseBuffer;
     const len = state.ctx.sampleRate * 2;
     const buf = state.ctx.createBuffer(1, len, state.ctx.sampleRate);
     const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    let b0 = 0;
+    let b1 = 0;
+    let b2 = 0;
+    let b3 = 0;
+    let b4 = 0;
+    let b5 = 0;
+    let b6 = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+      b6 = white * 0.115926;
+      d[i] = pink * 0.11;
+    }
     state.noiseBuffer = buf;
     return buf;
   }
@@ -249,6 +277,24 @@
     osc.connect(g);
     g.connect(state.instrumentBus);
     osc.start(time);
+
+    // A short high-passed noise click at the very onset - real kick drums
+    // have this beater-on-head transient, and without it a pure sine sweep
+    // sounds like a synth tone rather than a struck drum.
+    const click = ctx.createBufferSource();
+    click.buffer = ensureNoiseBuffer();
+    const clickFilter = ctx.createBiquadFilter();
+    clickFilter.type = 'highpass';
+    clickFilter.frequency.value = 2500;
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.4, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+    click.connect(clickFilter);
+    clickFilter.connect(clickGain);
+    clickGain.connect(state.instrumentBus);
+    click.start(time);
+    click.stop(time + 0.02);
+
     return { osc1: osc, osc2: null, gain: g };
   }
 
@@ -307,7 +353,8 @@
       bp.frequency.value = 1500;
       bp.Q.value = 1.2;
       const g = ctx.createGain();
-      g.gain.setValueAtTime(0.9, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.9, t + 0.002);
       g.gain.exponentialRampToValueAtTime(0.01, t + envTime(0.08));
       noise.connect(bp);
       bp.connect(g);
@@ -397,6 +444,97 @@
     return { osc1: noise, osc2: null, gain: g };
   }
 
+  // Karplus-Strong plucked/struck string: a noise burst runs around a delay
+  // line the length of one period, averaged and damped a little on every
+  // pass. That single feedback loop reproduces the two things a synth
+  // oscillator can't fake - a bright noisy attack transient, and higher
+  // notes naturally ringing out faster than lower ones - which is why it
+  // sounds like a real plucked string instead of a filtered sawtooth.
+  function karplusStrongBuffer(ctx, freq, durationSec, decay) {
+    const sampleRate = ctx.sampleRate;
+    const n = Math.max(2, Math.round(sampleRate / freq));
+    const totalSamples = Math.max(n + 1, Math.round(sampleRate * durationSec));
+    const buffer = ctx.createBuffer(1, totalSamples, sampleRate);
+    const data = buffer.getChannelData(0);
+    const ring = new Float32Array(n);
+    for (let i = 0; i < n; i++) ring[i] = Math.random() * 2 - 1;
+    let idx = 0;
+    for (let i = 0; i < totalSamples; i++) {
+      const cur = ring[idx];
+      const nextIdx = (idx + 1) % n;
+      data[i] = cur;
+      ring[idx] = decay * 0.5 * (cur + ring[nextIdx]);
+      idx = nextIdx;
+    }
+    return buffer;
+  }
+
+  function makeDistortionCurve(amount) {
+    const n = 2048;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      curve[i] = ((3 + amount) * x * 20 * (Math.PI / 180)) / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+  }
+
+  // decay/duration are tuned per instrument so the buffer comfortably
+  // contains the ring-out (no audible cutoff), and layer adds a second
+  // detuned or octave-up string for chorus/12-string doubling.
+  const PLUCK_CONFIGS = {
+    bass: { decay: 0.980, duration: 3.0, filterFreq: 2200, filterQ: 0.6, distortion: 0, layer: null, gain: 1.0 },
+    guitar_acoustic: { decay: 0.990, duration: 3.0, filterFreq: 5500, filterQ: 0.5, distortion: 0, layer: null, gain: 0.9 },
+    guitar_electric: { decay: 0.993, duration: 4.0, filterFreq: 6500, filterQ: 0.5, distortion: 0, layer: { ratio: 1.006, gain: 0.45 }, gain: 0.85 },
+    guitar_distortion: { decay: 0.995, duration: 6.0, filterFreq: 3200, filterQ: 1.2, distortion: 60, layer: null, gain: 0.85 },
+    guitar_nylon: { decay: 0.986, duration: 2.2, filterFreq: 2600, filterQ: 0.5, distortion: 0, layer: null, gain: 0.85 },
+    guitar_12str: { decay: 0.990, duration: 3.0, filterFreq: 6000, filterQ: 0.5, distortion: 0, layer: { ratio: 2, gain: 0.5 }, gain: 0.8 },
+    guitar_muted: { decay: 0.930, duration: 0.6, filterFreq: 2200, filterQ: 0.4, distortion: 0, layer: null, gain: 0.9 },
+  };
+
+  function startPluckedVoice(kind, freq) {
+    const cfg = PLUCK_CONFIGS[kind];
+    const ctx = state.ctx;
+    const now = ctx.currentTime;
+
+    const source = ctx.createBufferSource();
+    source.buffer = karplusStrongBuffer(ctx, freq, cfg.duration, cfg.decay);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = cfg.filterFreq;
+    filter.Q.value = cfg.filterQ;
+    source.connect(filter);
+
+    let outNode = filter;
+    if (cfg.distortion) {
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = makeDistortionCurve(cfg.distortion);
+      shaper.oversample = '2x';
+      outNode.connect(shaper);
+      outNode = shaper;
+    }
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(cfg.gain, now);
+    outNode.connect(gain);
+    gain.connect(state.instrumentBus);
+    source.start(now);
+
+    let osc2 = null;
+    if (cfg.layer) {
+      osc2 = ctx.createBufferSource();
+      osc2.buffer = karplusStrongBuffer(ctx, freq * cfg.layer.ratio, cfg.duration, cfg.decay);
+      const layerGain = ctx.createGain();
+      layerGain.gain.value = cfg.layer.gain;
+      osc2.connect(layerGain);
+      layerGain.connect(filter);
+      osc2.start(now);
+    }
+
+    return { osc1: source, osc2, gain, extra: [] };
+  }
+
   // A silent-carrier LFO wired into one or more detune AudioParams, for
   // instruments (violin, cello, flute, sax) that naturally waver in pitch
   // while a note is held. Returned so the caller can stop it on release.
@@ -419,6 +557,8 @@
   // kinds (violin, cello, flute, trumpet, saxophone, organ) hold flat while
   // pressed, the way a bow or breath sustains a real note.
   function startMelodicVoice(kind, freq) {
+    if (PLUCK_CONFIGS[kind]) return startPluckedVoice(kind, freq);
+
     const ctx = state.ctx;
     const now = ctx.currentTime;
     const gain = ctx.createGain();
@@ -428,33 +568,7 @@
     let osc2 = null;
     const extra = [];
 
-    if (kind === 'bass') {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      filter.frequency.setValueAtTime(1400, now);
-      filter.frequency.exponentialRampToValueAtTime(280, now + envTime(0.7));
-      filter.Q.value = 0.8;
-      osc1.connect(filter);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.95, now + 0.006);
-      gain.gain.exponentialRampToValueAtTime(0.35, now + envTime(0.7));
-    } else if (kind === 'guitar') {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      osc2 = ctx.createOscillator();
-      osc2.type = 'sawtooth';
-      osc2.frequency.value = freq * 1.005;
-      filter.frequency.setValueAtTime(4500, now);
-      filter.frequency.exponentialRampToValueAtTime(700, now + envTime(0.6));
-      filter.Q.value = 0.6;
-      osc1.connect(filter);
-      osc2.connect(filter);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.9, now + 0.006);
-      gain.gain.exponentialRampToValueAtTime(0.3, now + envTime(0.6));
-    } else if (kind === 'marimba') {
+    if (kind === 'marimba') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sine';
       osc1.frequency.value = freq;
@@ -467,6 +581,20 @@
       overtoneGain.connect(filter);
       osc1.connect(filter);
       filter.frequency.value = 3000;
+      const click = ctx.createBufferSource();
+      click.buffer = ensureNoiseBuffer();
+      const clickFilter = ctx.createBiquadFilter();
+      clickFilter.type = 'bandpass';
+      clickFilter.frequency.value = 3500;
+      clickFilter.Q.value = 0.8;
+      const clickGain = ctx.createGain();
+      clickGain.gain.setValueAtTime(0.3, now);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+      click.connect(clickFilter);
+      clickFilter.connect(clickGain);
+      clickGain.connect(state.instrumentBus);
+      click.start(now);
+      click.stop(now + 0.02);
       gain.gain.setValueAtTime(0.0001, now);
       gain.gain.exponentialRampToValueAtTime(1, now + 0.004);
       gain.gain.exponentialRampToValueAtTime(0.15, now + envTime(0.5));
@@ -486,10 +614,12 @@
     } else if (kind === 'violin') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
+      osc1.frequency.setValueAtTime(freq * 0.97, now);
+      osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.045);
       osc2 = ctx.createOscillator();
       osc2.type = 'sawtooth';
-      osc2.frequency.value = freq * 1.003;
+      osc2.frequency.setValueAtTime(freq * 1.003 * 0.97, now);
+      osc2.frequency.exponentialRampToValueAtTime(freq * 1.003, now + 0.045);
       filter.frequency.value = 2600;
       filter.Q.value = 1;
       osc1.connect(filter);
@@ -500,10 +630,12 @@
     } else if (kind === 'cello') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
+      osc1.frequency.setValueAtTime(freq * 0.975, now);
+      osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.06);
       osc2 = ctx.createOscillator();
       osc2.type = 'triangle';
-      osc2.frequency.value = freq * 1.002;
+      osc2.frequency.setValueAtTime(freq * 1.002 * 0.975, now);
+      osc2.frequency.exponentialRampToValueAtTime(freq * 1.002, now + 0.06);
       filter.frequency.value = 1400;
       filter.Q.value = 0.8;
       osc1.connect(filter);
@@ -537,10 +669,12 @@
     } else if (kind === 'trumpet') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
+      osc1.frequency.setValueAtTime(freq * 0.985, now);
+      osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.02);
       osc2 = ctx.createOscillator();
       osc2.type = 'square';
-      osc2.frequency.value = freq * 1.004;
+      osc2.frequency.setValueAtTime(freq * 1.004 * 0.985, now);
+      osc2.frequency.exponentialRampToValueAtTime(freq * 1.004, now + 0.02);
       filter.type = 'bandpass';
       filter.frequency.value = freq * 3;
       filter.Q.value = 2.5;
@@ -551,7 +685,8 @@
     } else if (kind === 'saxophone') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
+      osc1.frequency.setValueAtTime(freq * 0.985, now);
+      osc1.frequency.exponentialRampToValueAtTime(freq, now + 0.025);
       filter.frequency.value = 1600;
       filter.Q.value = 4;
       osc1.connect(filter);
@@ -1708,7 +1843,17 @@
 
     state.masterGain = state.ctx.createGain();
     state.masterGain.gain.value = 1;
-    state.masterGain.connect(state.ctx.destination);
+    // A gentle safety limiter: with several loop tracks, drums, and
+    // instrument voices all summing at once, the raw signal can clip and
+    // turn into harsh digital noise - this catches peaks before that happens.
+    state.masterCompressor = state.ctx.createDynamicsCompressor();
+    state.masterCompressor.threshold.value = -18;
+    state.masterCompressor.knee.value = 24;
+    state.masterCompressor.ratio.value = 8;
+    state.masterCompressor.attack.value = 0.003;
+    state.masterCompressor.release.value = 0.25;
+    state.masterGain.connect(state.masterCompressor);
+    state.masterCompressor.connect(state.ctx.destination);
 
     state.metronomeGain = state.ctx.createGain();
     state.metronomeGain.gain.value = state.metronomeVolume;
@@ -1726,7 +1871,7 @@
 
     state.metronomeMeter = attachMeter(state.metronomeGain);
     state.instMeter = attachMeter(state.instrumentBus);
-    state.masterMeter = attachMeter(state.masterGain);
+    state.masterMeter = attachMeter(state.masterCompressor);
 
     state.bpm = Math.max(1, parseInt(el.bpmInput.value, 10) || 100);
     state.beatsPerLoop = Math.max(1, parseInt(el.beatsInput.value, 10) || 8);
@@ -1776,6 +1921,7 @@
     state.micSource = null;
     state.micAnalyser = null;
     state.masterGain = null;
+    state.masterCompressor = null;
     state.metronomeGain = null;
     state.instrumentBus = null;
     state.instPanner = null;
