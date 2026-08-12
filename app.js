@@ -300,46 +300,102 @@
 
   function startSnareVoice(time) {
     const ctx = state.ctx;
-    const noise = ctx.createBufferSource();
-    noise.buffer = ensureNoiseBuffer();
-    noise.loop = true;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 1000;
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = noteFreq(180);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(1, time + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.18, time + envTime(0.2));
-    noise.connect(hp);
-    hp.connect(g);
-    osc.connect(g);
+    g.gain.exponentialRampToValueAtTime(1, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.16, time + envTime(0.2));
+
+    // Shell body: two close partials for the tonal "crack" under the wires.
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.value = noteFreq(180);
+    osc1.connect(g);
+    osc1.start(time);
+
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = noteFreq(330);
+    const osc2Gain = ctx.createGain();
+    osc2Gain.gain.value = 0.5;
+    osc2.connect(osc2Gain);
+    osc2Gain.connect(g);
+    osc2.start(time);
+
+    // Wire buzz: the sustained rattle that keeps going after the initial hit.
+    const buzz = ctx.createBufferSource();
+    buzz.buffer = ensureNoiseBuffer();
+    buzz.loop = true;
+    const buzzFilter = ctx.createBiquadFilter();
+    buzzFilter.type = 'highpass';
+    buzzFilter.frequency.value = 1200;
+    buzz.connect(buzzFilter);
+    buzzFilter.connect(g);
+    buzz.start(time);
+
     g.connect(state.instrumentBus);
-    noise.start(time);
-    osc.start(time);
-    return { osc1: noise, osc2: osc, gain: g };
+
+    // Snap: a brighter, fast-decaying noise burst for the stick's initial
+    // impact, separate from the sustained buzz so the attack stays crisp.
+    const snap = ctx.createBufferSource();
+    snap.buffer = ensureNoiseBuffer();
+    const snapFilter = ctx.createBiquadFilter();
+    snapFilter.type = 'bandpass';
+    snapFilter.frequency.value = 4000;
+    snapFilter.Q.value = 0.7;
+    const snapGain = ctx.createGain();
+    snapGain.gain.setValueAtTime(0.0001, time);
+    snapGain.gain.exponentialRampToValueAtTime(0.8, time + 0.002);
+    snapGain.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.05));
+    snap.connect(snapFilter);
+    snapFilter.connect(snapGain);
+    snapGain.connect(state.instrumentBus);
+    snap.start(time);
+    snap.stop(time + 0.08);
+
+    return { osc1, osc2, gain: g, extra: [buzz] };
+  }
+
+  // Six square oscillators at inharmonic ratios, summed and highpassed -
+  // the classic drum-machine cymbal trick. Plain filtered noise has no
+  // pitch content at all, so it reads as static; this metallic clang bank
+  // is what actually makes it sound like struck metal.
+  const METALLIC_RATIOS = [1, 1.342, 1.2312, 1.6532, 1.9498, 2.6];
+  function connectMetallicBank(ctx, time, baseFreq, destination) {
+    return METALLIC_RATIOS.map((r) => {
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = baseFreq * r;
+      o.connect(destination);
+      o.start(time);
+      return o;
+    });
   }
 
   function startHatVoice(time, open) {
     const ctx = state.ctx;
-    const noise = ctx.createBufferSource();
-    noise.buffer = ensureNoiseBuffer();
-    noise.loop = true;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
-    hp.frequency.value = 7000;
+    hp.frequency.value = open ? 7000 : 8500;
     const g = ctx.createGain();
     const decayT = open ? envTime(0.5) : envTime(0.08);
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.8, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(open ? 0.22 : 0.05, time + decayT);
-    noise.connect(hp);
+    g.gain.exponentialRampToValueAtTime(0.65, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(open ? 0.2 : 0.045, time + decayT);
+
+    const oscs = connectMetallicBank(ctx, time, 205, hp);
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = ensureNoiseBuffer();
+    noise.loop = true;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.35;
+    noise.connect(noiseGain);
+    noiseGain.connect(hp);
+    noise.start(time);
+
     hp.connect(g);
     g.connect(state.instrumentBus);
-    noise.start(time);
-    return { osc1: noise, osc2: null, gain: g };
+    return { osc1: oscs[0], osc2: noise, gain: g, extra: oscs.slice(1) };
   }
 
   function playClap(time) {
@@ -362,6 +418,24 @@
       noise.start(t);
       noise.stop(t + envTime(0.1));
     }
+    // A longer, lower "room tail" after the three sharp bursts, like the
+    // sound continuing to bloom in the space after real hands clap.
+    const tailTime = time + 3 * envTime(0.02);
+    const tail = ctx.createBufferSource();
+    tail.buffer = ensureNoiseBuffer();
+    const tailFilter = ctx.createBiquadFilter();
+    tailFilter.type = 'bandpass';
+    tailFilter.frequency.value = 1200;
+    tailFilter.Q.value = 1;
+    const tailGain = ctx.createGain();
+    tailGain.gain.setValueAtTime(0.0001, tailTime);
+    tailGain.gain.exponentialRampToValueAtTime(0.5, tailTime + 0.003);
+    tailGain.gain.exponentialRampToValueAtTime(0.005, tailTime + envTime(0.15));
+    tail.connect(tailFilter);
+    tailFilter.connect(tailGain);
+    tailGain.connect(state.instrumentBus);
+    tail.start(tailTime);
+    tail.stop(tailTime + envTime(0.18));
   }
 
   function startTomVoice(time) {
@@ -375,29 +449,62 @@
     g.gain.exponentialRampToValueAtTime(1, time + 0.004);
     g.gain.exponentialRampToValueAtTime(0.2, time + envTime(0.3));
     osc.connect(g);
+
+    const overtone = ctx.createOscillator();
+    overtone.type = 'sine';
+    overtone.frequency.setValueAtTime(noteFreq(200) * 1.5, time);
+    overtone.frequency.exponentialRampToValueAtTime(noteFreq(90) * 1.5, time + envTime(0.25));
+    const overtoneGain = ctx.createGain();
+    overtoneGain.gain.value = 0.2;
+    overtone.connect(overtoneGain);
+    overtoneGain.connect(g);
+    overtone.start(time);
+
+    const click = ctx.createBufferSource();
+    click.buffer = ensureNoiseBuffer();
+    const clickFilter = ctx.createBiquadFilter();
+    clickFilter.type = 'bandpass';
+    clickFilter.frequency.value = 1800;
+    clickFilter.Q.value = 0.8;
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(0.3, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+    click.connect(clickFilter);
+    clickFilter.connect(clickGain);
+    clickGain.connect(state.instrumentBus);
+    click.start(time);
+    click.stop(time + 0.02);
+
     g.connect(state.instrumentBus);
     osc.start(time);
-    return { osc1: osc, osc2: null, gain: g };
+    return { osc1: osc, osc2: overtone, gain: g };
   }
 
   function startTambourineVoice(time) {
     const ctx = state.ctx;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 6500;
+    bp.Q.value = 1.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.55, time + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.16, time + envTime(0.35));
+
+    const oscs = connectMetallicBank(ctx, time, 420, bp);
+
     const noise = ctx.createBufferSource();
     noise.buffer = ensureNoiseBuffer();
     noise.loop = true;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 7000;
-    bp.Q.value = 2.5;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.75, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.18, time + envTime(0.35));
-    noise.connect(bp);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.3;
+    noise.connect(noiseGain);
+    noiseGain.connect(bp);
+    noise.start(time);
+
     bp.connect(g);
     g.connect(state.instrumentBus);
-    noise.start(time);
-    return { osc1: noise, osc2: null, gain: g };
+    return { osc1: oscs[0], osc2: noise, gain: g, extra: oscs.slice(1) };
   }
 
   function startCowbellVoice(time) {
