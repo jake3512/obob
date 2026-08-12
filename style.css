@@ -120,6 +120,7 @@ body {
 .btn:active:not(:disabled) { transform: scale(0.96); }
 .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn.primary { background: linear-gradient(135deg, var(--accent), #5468ff); border-color: transparent; font-weight: 600; }
+.btn.active { background: linear-gradient(135deg, var(--accent), #5468ff); border-color: transparent; }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.secondary { background: transparent; }
 
@@ -222,12 +223,6 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.touchpad-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 10px;
-}
-
 .pad {
   position: relative;
   aspect-ratio: 1 / 0.85;
@@ -258,6 +253,283 @@ body {
   filter: brightness(1.25);
 }
 
+.inst-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.inst-tab {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.inst-tab.active {
+  background: linear-gradient(135deg, var(--accent), #5468ff);
+  border-color: transparent;
+  color: #fff;
+}
+
+.inst-view[hidden] { display: none; }
+
+/* ---- Drum kit board: pieces laid out like a real kit, not a grid ---- */
+.kit-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: radial-gradient(circle at 50% 85%, #241a3d, #150f26 70%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.kit-pad {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  aspect-ratio: 1 / 1;
+}
+.kit-pad.active,
+.kit-pad:active {
+  transform: translate(-50%, -50%) scale(0.94);
+  filter: brightness(1.3);
+}
+.kit-pad-lg { width: 34%; }
+.kit-pad-md { width: 24%; }
+.kit-pad-sm { width: 17%; }
+.kit-pad-lg .pad-icon { font-size: 2.1rem; }
+.kit-pad-md .pad-icon { font-size: 1.5rem; }
+.kit-pad-sm .pad-icon { font-size: 1.1rem; }
+.kit-pad-sm span:not(.pad-icon) { font-size: 0.6rem; }
+
+/* ---- Piano keys (lead / e-piano) ---- */
+.keys-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.voice-select { display: flex; gap: 6px; }
+.voice-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.voice-btn.active { background: var(--accent); border-color: transparent; color: #fff; }
+.octave-controls { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
+
+.piano {
+  position: relative;
+  height: 190px;
+  background: #0c0c14;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.piano-white-row { display: flex; height: 100%; }
+.piano-white-row .key {
+  flex: 1;
+  background: linear-gradient(180deg, #fbfbfb, #e4e4e4);
+  border-right: 1px solid #999;
+  border-radius: 0 0 6px 6px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 8px;
+  font-size: 0.65rem;
+  color: #666;
+  font-weight: 600;
+}
+.piano-white-row .key:last-child { border-right: none; }
+.piano-white-row .key.active { background: linear-gradient(180deg, var(--accent), #5468ff); color: #fff; }
+.piano-black-row {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 58%;
+  pointer-events: none;
+}
+.piano-black-row .key {
+  position: absolute;
+  top: 0;
+  width: 9%;
+  height: 100%;
+  background: linear-gradient(180deg, #2b2b2b, #050505);
+  border-radius: 0 0 5px 5px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.5);
+}
+.piano-black-row .key.active { background: linear-gradient(180deg, var(--accent-2), #b9316b); }
+
+/* ---- Mixer ---- */
+.mixer-panel {
+  max-width: 980px;
+  margin: 0 auto 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.mixer-panel h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.mixer-panel .hint { margin: 0 0 14px; }
+
+.mixer-strips {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.mixer-strip {
+  flex: 0 0 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--strip-color, var(--accent));
+  border-radius: 10px;
+  padding: 10px 6px 12px;
+  transition: opacity 0.15s ease;
+}
+.mixer-strip.dimmed { opacity: 0.4; }
+
+.mixer-toprow { display: flex; gap: 3px; height: 22px; }
+.mini-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 0.66rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.mini-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.solo-btn.active { background: var(--warn); border-color: transparent; color: #241900; }
+.mute-btn.active { background: var(--danger); border-color: transparent; color: #fff; }
+.download-btn:not(:disabled):hover { border-color: var(--accent); color: var(--text); }
+
+.mixer-meter {
+  width: 8px;
+  height: 46px;
+  background: #0009;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+.mixer-meter-fill {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(0deg, var(--ok), var(--warn) 75%, var(--danger));
+}
+
+.fader-wrap {
+  width: 44px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fader-wrap .fader {
+  width: 110px;
+  height: 28px;
+  transform: rotate(-90deg);
+  accent-color: var(--strip-color, var(--accent));
+}
+
+.mixer-val {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pan-knob {
+  width: 56px;
+  accent-color: var(--strip-color, var(--accent));
+}
+
+.mixer-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  word-break: keep-all;
+}
+
+/* ---- Trim editor (per track) ---- */
+.trim-editor {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.trim-wave-wrap {
+  position: relative;
+  height: 80px;
+  background: #0c0c18;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  touch-action: none;
+}
+.trim-canvas { width: 100%; height: 100%; display: block; }
+.trim-mask {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+.trim-mask-left { left: 0; }
+.trim-mask-right { right: 0; }
+.trim-handle {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.85;
+  border-radius: 4px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.trim-handle:active { opacity: 1; }
+.trim-info {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.trim-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.trim-actions .btn { padding: 6px 10px; font-size: 0.78rem; }
+
+.voice-btn { display: inline-flex; align-items: center; gap: 6px; }
+.voice-remove {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+.voice-remove:hover { opacity: 1; }
+
 .app-footer {
   text-align: center;
   color: var(--text-dim);
@@ -268,5 +540,5 @@ body {
 @media (max-width: 600px) {
   .setup-panel, .transport { padding: 14px; }
   .field.grow { flex-direction: column; align-items: stretch; }
-  .touchpad-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .piano { height: 150px; }
 }

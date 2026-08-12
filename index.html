@@ -55,14 +55,7 @@
       <input type="checkbox" id="metronomeToggle" />
       <span>메트로놈</span>
     </label>
-    <div class="vol-field">
-      <span>메트로놈 볼륨</span>
-      <input type="range" id="metronomeVol" min="0" max="1" step="0.01" value="0.4" />
-    </div>
-    <div class="vol-field">
-      <span>마스터 볼륨</span>
-      <input type="range" id="masterVol" min="0" max="1.5" step="0.01" value="1" />
-    </div>
+    <button type="button" class="btn" id="mixerToggleBtn">🎚 믹서</button>
     <div class="mic-meter">
       <span>Mic</span>
       <div class="meter-bar"><div class="meter-fill" id="micMeterFill"></div></div>
@@ -85,6 +78,7 @@
       <button type="button" class="track-mute btn" title="음소거" disabled>🔇</button>
       <button type="button" class="track-clear btn" title="지우기" disabled>✕</button>
       <button type="button" class="track-download btn" title="WAV 다운로드" disabled>⭳</button>
+      <button type="button" class="track-trim btn" title="구간 편집(자르기)" disabled>✂</button>
     </div>
     <div class="vol-field">
       <span>볼륨</span>
@@ -100,12 +94,28 @@
       <input type="range" class="track-pitch" min="-12" max="12" step="1" value="0" />
       <span class="val-badge track-pitch-val">0st</span>
     </div>
+    <div class="trim-editor" hidden>
+      <div class="trim-wave-wrap">
+        <canvas class="trim-canvas" width="600" height="80"></canvas>
+        <div class="trim-mask trim-mask-left"></div>
+        <div class="trim-mask trim-mask-right"></div>
+        <div class="trim-handle trim-handle-left"></div>
+        <div class="trim-handle trim-handle-right"></div>
+      </div>
+      <div class="trim-info"><span class="trim-time">0.00s – 0.00s / 0.00s</span></div>
+      <div class="trim-actions">
+        <button type="button" class="btn trim-preview">▶ 미리듣기</button>
+        <button type="button" class="btn trim-apply-loop">✂ 루프에 적용</button>
+        <button type="button" class="btn trim-save-sample">🎹 건반 샘플로 저장</button>
+        <button type="button" class="btn secondary trim-close">닫기</button>
+      </div>
+    </div>
   </article>
 </template>
 
 <section class="instruments-panel" id="instrumentsPanel" hidden>
-  <h2>🥁 악기 &amp; 터치 패드</h2>
-  <p class="hint">타악기 패드는 탭하면 바로 소리가 나고, 저음/기타/리드/일렉피아노 패드는 누르고 있는 동안 소리가 지속돼요. 누른 채로 위아래로 드래그하면 음정이 살짝 휘어집니다(피치 벤드). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
+  <h2>🎸 악기 연주</h2>
+  <p class="hint" id="instHint">드럼은 세트를 탭해서 치고, 베이스·기타·신스리드·일렉피아노는 건반에서 보이스를 선택해 눌러서 연주하세요(여러 손가락으로 화음도 가능). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
   <div class="instrument-controls">
     <div class="vol-field">
       <span>악기 속도</span>
@@ -117,12 +127,42 @@
       <input type="range" id="instPitch" min="-12" max="12" step="1" value="0" />
       <span class="val-badge" id="instPitchVal">0st</span>
     </div>
-    <div class="vol-field">
-      <span>악기 볼륨</span>
-      <input type="range" id="instVol" min="0" max="1.5" step="0.01" value="1" />
+  </div>
+
+  <div class="inst-tabs" id="instTabs">
+    <button type="button" class="inst-tab active" data-cat="drums">🥁 드럼 세트</button>
+    <button type="button" class="inst-tab" data-cat="keys">🎹 건반</button>
+  </div>
+
+  <div class="inst-view" id="drumsView" data-cat="drums">
+    <div class="kit-board" id="drumKit"></div>
+  </div>
+
+  <div class="inst-view" id="keysView" data-cat="keys" hidden>
+    <div class="keys-toolbar">
+      <div class="voice-select" id="voiceSelect">
+        <button type="button" class="voice-btn" data-voice="bass">베이스</button>
+        <button type="button" class="voice-btn" data-voice="guitar">기타</button>
+        <button type="button" class="voice-btn" data-voice="lead">신스리드</button>
+        <button type="button" class="voice-btn active" data-voice="epiano">일렉피아노</button>
+      </div>
+      <div class="octave-controls">
+        <button type="button" class="btn" id="octDownBtn">옥타브 −</button>
+        <span class="val-badge" id="octaveLabel">C4</span>
+        <button type="button" class="btn" id="octUpBtn">옥타브 +</button>
+      </div>
+    </div>
+    <div class="piano" id="pianoKeys">
+      <div class="piano-white-row"></div>
+      <div class="piano-black-row"></div>
     </div>
   </div>
-  <div class="touchpad-grid" id="touchpadGrid"></div>
+</section>
+
+<section class="mixer-panel" id="mixerPanel" hidden>
+  <h2>🎚️ 믹서</h2>
+  <p class="hint">각 채널의 볼륨·팬·음소거·솔로를 한눈에 조절하세요. S(솔로)를 누르면 그 채널만 들리고 나머지는 자동으로 조용해집니다.</p>
+  <div class="mixer-strips" id="mixerStrips"></div>
 </section>
 
 <footer class="app-footer">
