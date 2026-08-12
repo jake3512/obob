@@ -222,12 +222,6 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.touchpad-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 10px;
-}
-
 .pad {
   position: relative;
   aspect-ratio: 1 / 0.85;
@@ -282,71 +276,34 @@ body {
 
 .inst-view[hidden] { display: none; }
 
-/* ---- Fretboard (bass / guitar) ---- */
-.fretboard {
-  display: flex;
-  flex-direction: column;
-  height: 240px;
-  background: #150f26;
+/* ---- Drum kit board: pieces laid out like a real kit, not a grid ---- */
+.kit-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: radial-gradient(circle at 50% 85%, #241a3d, #150f26 70%);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
 }
-.string-row {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.string-row:last-child { border-bottom: none; }
-.string-label {
-  position: relative;
-  z-index: 2;
-  width: 30px;
-  flex: 0 0 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--text-dim);
-  background: var(--bg-card);
-  border-right: 1px solid var(--border);
-}
-.string-track {
-  position: relative;
-  flex: 1;
-  background-image:
-    linear-gradient(180deg, transparent calc(50% - 1px), rgba(255,255,255,0.55) calc(50% - 1px), rgba(255,255,255,0.55) calc(50% + 1px), transparent calc(50% + 1px)),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.16) 0, rgba(255,255,255,0.16) 1px, transparent 1px, transparent calc(100% / 12));
-}
-.string-track.plucked::before {
-  content: '';
+.kit-pad {
   position: absolute;
-  inset: 0;
-  background: var(--pad-color, var(--accent));
-  opacity: 0.35;
-  animation: string-flash 0.25s ease-out;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  aspect-ratio: 1 / 1;
 }
-@keyframes string-flash {
-  from { opacity: 0.55; }
-  to { opacity: 0; }
+.kit-pad.active,
+.kit-pad:active {
+  transform: translate(-50%, -50%) scale(0.94);
+  filter: brightness(1.3);
 }
-.fret-labels {
-  position: relative;
-  height: 16px;
-  margin-left: 30px;
-}
-.fret-labels span {
-  position: absolute;
-  transform: translateX(-50%);
-  font-size: 0.62rem;
-  color: var(--text-dim);
-}
+.kit-pad-lg { width: 34%; }
+.kit-pad-md { width: 24%; }
+.kit-pad-sm { width: 17%; }
+.kit-pad-lg .pad-icon { font-size: 2.1rem; }
+.kit-pad-md .pad-icon { font-size: 1.5rem; }
+.kit-pad-sm .pad-icon { font-size: 1.1rem; }
+.kit-pad-sm span:not(.pad-icon) { font-size: 0.6rem; }
 
 /* ---- Piano keys (lead / e-piano) ---- */
 .keys-toolbar {

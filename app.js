@@ -34,9 +34,7 @@
     instPitchVal: $('instPitchVal'),
     instVol: $('instVol'),
     instTabs: $('instTabs'),
-    touchpadGrid: $('touchpadGrid'),
-    bassFretboard: $('bassFretboard'),
-    guitarFretboard: $('guitarFretboard'),
+    drumKit: $('drumKit'),
     voiceSelect: $('voiceSelect'),
     octDownBtn: $('octDownBtn'),
     octUpBtn: $('octUpBtn'),
@@ -44,36 +42,22 @@
     pianoKeys: $('pianoKeys'),
   };
 
+  // Positioned like a real kit viewed from the drummer's seat: hats/tom/crash
+  // up top, snare front-center, kick largest and lowest.
   const DRUM_PADS = [
-    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', trigger: (t) => playHat(t, false) },
-    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', trigger: (t) => playHat(t, true) },
-    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', trigger: (t) => playSnare(t) },
-    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', trigger: (t) => playTom(t) },
-    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', trigger: (t) => playKick(t) },
-    { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', trigger: (t) => playClap(t) },
+    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 16, trigger: (t) => playHat(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 34, trigger: (t) => playHat(t, true) },
+    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 62, trigger: (t) => playTom(t) },
+    { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', size: 'sm', top: 16, left: 85, trigger: (t) => playClap(t) },
+    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 46, left: 30, trigger: (t) => playSnare(t) },
+    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 68, left: 58, trigger: (t) => playKick(t) },
   ];
 
-  // Tab (high) to bottom, matching standard tablature string order.
-  const BASS_STRINGS = [
-    { name: 'G', open: 98.0 },
-    { name: 'D', open: 73.42 },
-    { name: 'A', open: 55.0 },
-    { name: 'E', open: 41.2 },
-  ];
-  const GUITAR_STRINGS = [
-    { name: 'e', open: 329.63 },
-    { name: 'B', open: 246.94 },
-    { name: 'G', open: 196.0 },
-    { name: 'D', open: 146.83 },
-    { name: 'A', open: 110.0 },
-    { name: 'E', open: 82.41 },
-  ];
-  const FRET_COUNT = 12;
-  const FRET_MARKERS = [0, 3, 5, 7, 9, 12];
   const WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12];
   const WHITE_NAMES = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'];
   const BLACK_OFFSETS = [1, 3, 6, 8, 10];
   const BLACK_AFTER_WHITE_IDX = [0, 1, 3, 4, 5];
+  const KEYBOARD_DEFAULT_BASE_MIDI = { bass: 36, guitar: 48, lead: 60, epiano: 60 };
 
   const state = {
     ctx: null,
@@ -100,7 +84,6 @@
     instPitchSemis: 0,
     noiseBuffer: null,
     activeVoices: new Map(),
-    activeStrums: new Map(),
     keyboardVoice: 'epiano',
     keyboardBaseMidi: 60,
   };
@@ -314,30 +297,58 @@
     osc.stop(time + envTime(0.35));
   }
 
-  // Sustained voice (piano-style keys): held while the key is pressed, matches
-  // how a real keyboard/piano note rings for as long as the key stays down.
+  // Keyboard voices: held while the key is pressed, like any real keyboard
+  // instrument (piano, or a bass/guitar patch played from a keyboard). Bass
+  // and guitar get a plucked attack that decays toward a soft sustain, since
+  // even a held string note keeps ringing down rather than staying flat.
   function startMelodicVoice(kind, freq) {
     const ctx = state.ctx;
     const now = ctx.currentTime;
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.9, now + 0.02);
     const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
     let osc1 = null;
     let osc2 = null;
 
-    if (kind === 'lead') {
+    if (kind === 'bass') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      filter.frequency.setValueAtTime(1400, now);
+      filter.frequency.exponentialRampToValueAtTime(280, now + envTime(0.7));
+      filter.Q.value = 0.8;
+      osc1.connect(filter);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.95, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.35, now + envTime(0.7));
+    } else if (kind === 'guitar') {
+      osc1 = ctx.createOscillator();
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = freq;
+      osc2 = ctx.createOscillator();
+      osc2.type = 'sawtooth';
+      osc2.frequency.value = freq * 1.005;
+      filter.frequency.setValueAtTime(4500, now);
+      filter.frequency.exponentialRampToValueAtTime(700, now + envTime(0.6));
+      filter.Q.value = 0.6;
+      osc1.connect(filter);
+      osc2.connect(filter);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.9, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.3, now + envTime(0.6));
+    } else if (kind === 'lead') {
       osc1 = ctx.createOscillator();
       osc1.type = 'sawtooth';
       osc1.frequency.value = freq;
       osc2 = ctx.createOscillator();
       osc2.type = 'square';
       osc2.frequency.value = freq;
-      filter.type = 'lowpass';
       filter.frequency.value = 2200;
       filter.Q.value = 3;
       osc1.connect(filter);
       osc2.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.9, now + 0.02);
     } else {
       osc1 = ctx.createOscillator();
       osc1.type = 'sine';
@@ -349,9 +360,10 @@
       overtoneGain.gain.value = 0.15;
       osc2.connect(overtoneGain);
       overtoneGain.connect(filter);
-      filter.type = 'lowpass';
       filter.frequency.value = 6000;
       osc1.connect(filter);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.9, now + 0.02);
     }
 
     filter.connect(gain);
@@ -381,49 +393,6 @@
     state.activeVoices.delete(pointerId);
   }
 
-  // Plucked string (bass / guitar): a single decaying note, like a real
-  // string set ringing by a finger or pick - it does not sustain just
-  // because a touch stays on the fretboard.
-  function playPluckedString(kind, freq, velocity) {
-    const ctx = state.ctx;
-    const now = ctx.currentTime;
-    const gain = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    const decay = envTime(kind === 'bass' ? 1.1 : 0.9);
-    let osc1;
-    let osc2 = null;
-    if (kind === 'bass') {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      filter.frequency.setValueAtTime(1200, now);
-      filter.frequency.exponentialRampToValueAtTime(180, now + decay);
-      filter.Q.value = 0.8;
-      osc1.connect(filter);
-    } else {
-      osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = freq;
-      osc2 = ctx.createOscillator();
-      osc2.type = 'sawtooth';
-      osc2.frequency.value = freq * 1.005;
-      filter.frequency.setValueAtTime(4500, now);
-      filter.frequency.exponentialRampToValueAtTime(500, now + decay);
-      filter.Q.value = 0.6;
-      osc1.connect(filter);
-      osc2.connect(filter);
-    }
-    filter.connect(gain);
-    gain.connect(state.instrumentBus);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.05, 0.9 * velocity), now + 0.006);
-    gain.gain.exponentialRampToValueAtTime(0.0008, now + decay);
-    osc1.start(now);
-    osc1.stop(now + decay + 0.05);
-    if (osc2) { osc2.start(now); osc2.stop(now + decay + 0.05); }
-  }
-
   function darken(hex, factor) {
     const c = hex.replace('#', '');
     const r = Math.round(parseInt(c.substring(0, 2), 16) * factor);
@@ -432,15 +401,19 @@
     return `rgb(${r},${g},${b})`;
   }
 
+  // ---- Drum kit: one assembled board (not a plain grid) so it reads and
+  // plays like a real kit - each piece is tapped where it actually sits.
   function buildDrumPads() {
-    el.touchpadGrid.innerHTML = '';
+    el.drumKit.innerHTML = '';
     DRUM_PADS.forEach((inst) => {
       const pad = document.createElement('button');
       pad.type = 'button';
-      pad.className = 'pad';
+      pad.className = `pad kit-pad kit-pad-${inst.size}`;
       pad.style.setProperty('--pad-color', inst.color);
       pad.style.setProperty('--pad-color-dark', darken(inst.color, 0.4));
-      pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span><span class="pad-cat">TAP</span>`;
+      pad.style.top = inst.top + '%';
+      pad.style.left = inst.left + '%';
+      pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span>`;
       pad.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         if (!state.started) return;
@@ -448,97 +421,11 @@
         pad.classList.add('active');
         setTimeout(() => pad.classList.remove('active'), 120);
       });
-      el.touchpadGrid.appendChild(pad);
+      el.drumKit.appendChild(pad);
     });
   }
 
-  // ---- Fretboard (bass / guitar): pluck a string, drag across strings to
-  // strum a chord, drag along one string to slide/run - mirrors how a real
-  // fretted string instrument is actually played with the fingers.
-  function buildFretboardDOM(container, strings, color) {
-    container.innerHTML = '';
-    container.style.setProperty('--pad-color', color);
-    strings.forEach((s) => {
-      const row = document.createElement('div');
-      row.className = 'string-row';
-      const label = document.createElement('div');
-      label.className = 'string-label';
-      label.textContent = s.name;
-      const track = document.createElement('div');
-      track.className = 'string-track';
-      row.appendChild(label);
-      row.appendChild(track);
-      container.appendChild(row);
-    });
-    const fretLabels = document.createElement('div');
-    fretLabels.className = 'fret-labels';
-    FRET_MARKERS.forEach((f) => {
-      const span = document.createElement('span');
-      span.textContent = f;
-      span.style.left = (f / FRET_COUNT) * 100 + '%';
-      fretLabels.appendChild(span);
-    });
-    container.appendChild(fretLabels);
-  }
-
-  function attachFretboard(container, strings, kind) {
-    const tracks = Array.from(container.querySelectorAll('.string-track'));
-
-    function stringIndexAt(clientY) {
-      const rect = container.getBoundingClientRect();
-      const relY = Math.min(rect.height - 1, Math.max(0, clientY - rect.top));
-      return Math.min(strings.length - 1, Math.floor((relY / rect.height) * strings.length));
-    }
-    function fretAt(clientX) {
-      const rect = container.getBoundingClientRect();
-      const labelWidth = 30;
-      const relX = Math.min(rect.width - labelWidth - 1, Math.max(0, clientX - rect.left - labelWidth));
-      const trackWidth = rect.width - labelWidth;
-      return Math.round((relX / trackWidth) * FRET_COUNT);
-    }
-    function pluck(stringIdx, fret, velocity) {
-      const freq = noteFreq(strings[stringIdx].open * Math.pow(2, fret / 12));
-      playPluckedString(kind, freq, velocity);
-      const track = tracks[stringIdx];
-      track.classList.remove('plucked');
-      void track.offsetWidth;
-      track.classList.add('plucked');
-    }
-
-    container.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      if (!state.started) return;
-      container.setPointerCapture(e.pointerId);
-      const sIdx = stringIndexAt(e.clientY);
-      const fret = fretAt(e.clientX);
-      pluck(sIdx, fret, 1);
-      state.activeStrums.set(e.pointerId, { stringIdx: sIdx, fret });
-    });
-    container.addEventListener('pointermove', (e) => {
-      const rec = state.activeStrums.get(e.pointerId);
-      if (!rec) return;
-      const sIdx = stringIndexAt(e.clientY);
-      const fret = fretAt(e.clientX);
-      if (sIdx !== rec.stringIdx || fret !== rec.fret) {
-        pluck(sIdx, fret, sIdx !== rec.stringIdx ? 0.85 : 0.55);
-        rec.stringIdx = sIdx;
-        rec.fret = fret;
-      }
-    });
-    const release = (e) => state.activeStrums.delete(e.pointerId);
-    container.addEventListener('pointerup', release);
-    container.addEventListener('pointercancel', release);
-    container.addEventListener('lostpointercapture', release);
-  }
-
-  function buildBassAndGuitar() {
-    buildFretboardDOM(el.bassFretboard, BASS_STRINGS, '#6c8cff');
-    attachFretboard(el.bassFretboard, BASS_STRINGS, 'bass');
-    buildFretboardDOM(el.guitarFretboard, GUITAR_STRINGS, '#b48cff');
-    attachFretboard(el.guitarFretboard, GUITAR_STRINGS, 'guitar');
-  }
-
-  // ---- Piano keyboard (lead / e-piano): real multi-touch keys, so several
+  // ---- Piano keyboard (bass / guitar / lead / e-piano): real multi-touch keys, so several
   // fingers held down together play an actual chord, and octave buttons move
   // the playable range the way a keyboard's octave shift would.
   function midiToFreq(midi) {
@@ -593,7 +480,9 @@
       const btn = e.target.closest('.voice-btn');
       if (!btn) return;
       state.keyboardVoice = btn.dataset.voice;
+      state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice];
       el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      renderKeyboard();
     });
     el.octDownBtn.addEventListener('click', () => {
       state.keyboardBaseMidi = Math.max(24, state.keyboardBaseMidi - 12);
@@ -1118,7 +1007,6 @@
 
     buildTracks();
     buildDrumPads();
-    buildBassAndGuitar();
     renderKeyboard();
 
     el.bpmInput.disabled = true;
@@ -1148,7 +1036,6 @@
     });
     state.activeVoices.forEach((rec) => { try { rec.voice.gain.disconnect(); } catch (e) { /* noop */ } });
     state.activeVoices.clear();
-    state.activeStrums.clear();
     if (state.micStream) state.micStream.getTracks().forEach((tr) => tr.stop());
     if (state.ctx) state.ctx.close();
 
@@ -1167,9 +1054,7 @@
     el.tracksGrid.hidden = true;
     el.transport.hidden = true;
     el.instrumentsPanel.hidden = true;
-    el.touchpadGrid.innerHTML = '';
-    el.bassFretboard.innerHTML = '';
-    el.guitarFretboard.innerHTML = '';
+    el.drumKit.innerHTML = '';
     el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
     state.keyboardVoice = 'epiano';
     state.keyboardBaseMidi = 60;

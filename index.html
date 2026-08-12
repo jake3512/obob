@@ -105,7 +105,7 @@
 
 <section class="instruments-panel" id="instrumentsPanel" hidden>
   <h2>🎸 악기 연주</h2>
-  <p class="hint" id="instHint">드럼은 탭해서 치고, 베이스·기타는 프렛보드를 눌러 뜯거나 여러 현을 쓸어넘겨 스트럼하고, 건반은 눌러서 화음을 연주하세요. 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
+  <p class="hint" id="instHint">드럼은 세트를 탭해서 치고, 베이스·기타·신스리드·일렉피아노는 건반에서 보이스를 선택해 눌러서 연주하세요(여러 손가락으로 화음도 가능). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
   <div class="instrument-controls">
     <div class="vol-field">
       <span>악기 속도</span>
@@ -124,29 +124,21 @@
   </div>
 
   <div class="inst-tabs" id="instTabs">
-    <button type="button" class="inst-tab active" data-cat="drums">🥁 드럼</button>
-    <button type="button" class="inst-tab" data-cat="bass">🎸 베이스</button>
-    <button type="button" class="inst-tab" data-cat="guitar">🪕 기타</button>
+    <button type="button" class="inst-tab active" data-cat="drums">🥁 드럼 세트</button>
     <button type="button" class="inst-tab" data-cat="keys">🎹 건반</button>
   </div>
 
   <div class="inst-view" id="drumsView" data-cat="drums">
-    <div class="touchpad-grid" id="touchpadGrid"></div>
-  </div>
-
-  <div class="inst-view" id="bassView" data-cat="bass" hidden>
-    <div class="fretboard" id="bassFretboard"></div>
-  </div>
-
-  <div class="inst-view" id="guitarView" data-cat="guitar" hidden>
-    <div class="fretboard" id="guitarFretboard"></div>
+    <div class="kit-board" id="drumKit"></div>
   </div>
 
   <div class="inst-view" id="keysView" data-cat="keys" hidden>
     <div class="keys-toolbar">
       <div class="voice-select" id="voiceSelect">
-        <button type="button" class="voice-btn active" data-voice="epiano">일렉피아노</button>
+        <button type="button" class="voice-btn" data-voice="bass">베이스</button>
+        <button type="button" class="voice-btn" data-voice="guitar">기타</button>
         <button type="button" class="voice-btn" data-voice="lead">신스리드</button>
+        <button type="button" class="voice-btn active" data-voice="epiano">일렉피아노</button>
       </div>
       <div class="octave-controls">
         <button type="button" class="btn" id="octDownBtn">옥타브 −</button>
