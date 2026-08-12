@@ -34,6 +34,7 @@
     instTabs: $('instTabs'),
     drumKit: $('drumKit'),
     voiceSelect: $('voiceSelect'),
+    chordRow: $('chordRow'),
     octDownBtn: $('octDownBtn'),
     octUpBtn: $('octUpBtn'),
     octaveLabel: $('octaveLabel'),
@@ -81,6 +82,21 @@
     organ: 48,
     marimba: 48,
   };
+
+  // Real open-position guitar chord voicings (absolute MIDI notes per
+  // string, standard tuning) - not just a generic root/third/fifth triad,
+  // so they ring with the same open-string spread a real strummed chord has.
+  const CHORD_DEFS = {
+    C: [48, 52, 55, 60, 64],
+    G: [43, 47, 50, 55, 59, 67],
+    D: [50, 57, 62, 66],
+    A: [45, 52, 57, 62, 64],
+    E: [40, 47, 52, 56, 59, 64],
+    Em: [40, 47, 52, 55, 59, 64],
+    Am: [45, 52, 57, 60, 64],
+    F: [53, 57, 60, 65],
+  };
+  const CHORD_STRUM_STAGGER_MS = 14;
 
   const state = {
     ctx: null,
@@ -1006,6 +1022,40 @@
     key.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
   }
 
+  // ---- Chord shortcuts (guitar voices only): one tap strums a full real
+  // open-chord voicing instead of picking a single note.
+  function updateChordRowVisibility() {
+    el.chordRow.hidden = !state.keyboardVoice.startsWith('guitar_');
+  }
+
+  function strumChord(notes) {
+    const kind = state.keyboardVoice;
+    notes.forEach((midi, i) => {
+      setTimeout(() => {
+        if (!state.started) return;
+        startMelodicVoice(kind, noteFreq(midiToFreq(midi)));
+      }, i * CHORD_STRUM_STAGGER_MS);
+    });
+  }
+
+  function buildChordRow() {
+    el.chordRow.innerHTML = '';
+    Object.keys(CHORD_DEFS).forEach((name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chord-btn';
+      btn.textContent = name;
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (!state.started) return;
+        strumChord(CHORD_DEFS[name]);
+        btn.classList.add('active');
+        setTimeout(() => btn.classList.remove('active'), 150);
+      });
+      el.chordRow.appendChild(btn);
+    });
+  }
+
   function wireKeyboardControls() {
     el.voiceSelect.addEventListener('click', (e) => {
       const removeIcon = e.target.closest('.voice-remove');
@@ -1018,6 +1068,7 @@
           state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI.epiano;
           el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b.dataset.voice === 'epiano'));
           renderKeyboard();
+          updateChordRowVisibility();
         }
         btn.remove();
         return;
@@ -1028,6 +1079,7 @@
       state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] != null ? KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] : 60;
       el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b === btn));
       renderKeyboard();
+      updateChordRowVisibility();
     });
     el.octDownBtn.addEventListener('click', () => {
       state.keyboardBaseMidi = Math.max(12, state.keyboardBaseMidi - 12);
@@ -2017,6 +2069,8 @@
     buildTracks();
     buildDrumPads();
     renderKeyboard();
+    buildChordRow();
+    updateChordRowVisibility();
     buildMixer();
 
     el.bpmInput.disabled = true;
@@ -2084,6 +2138,8 @@
     el.mixerToggleBtn.classList.remove('active');
     el.drumKit.innerHTML = '';
     el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
+    el.chordRow.innerHTML = '';
+    el.chordRow.hidden = true;
     el.voiceSelect.querySelectorAll('.sample-voice-btn').forEach((b) => b.remove());
     state.customSamples = [];
     state.sampleCounter = 0;
