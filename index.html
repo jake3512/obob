@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Loop Station — 온라인 루프 스테이션</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="app-header">
+  <h1>🎛️ Loop Station</h1>
+  <p class="tagline">브라우저에서 바로 쓰는 온라인 루프 페달</p>
+</header>
+
+<section class="setup-panel" id="setupPanel">
+  <div class="field">
+    <label for="bpmInput">BPM</label>
+    <div class="stepper">
+      <button type="button" data-step="-1" data-target="bpmInput">−</button>
+      <input id="bpmInput" type="number" min="40" max="240" value="100" />
+      <button type="button" data-step="1" data-target="bpmInput">+</button>
+    </div>
+  </div>
+  <div class="field">
+    <label for="beatsInput">루프당 박자 수</label>
+    <div class="stepper">
+      <button type="button" data-step="-1" data-target="beatsInput">−</button>
+      <input id="beatsInput" type="number" min="1" max="32" value="8" />
+      <button type="button" data-step="1" data-target="beatsInput">+</button>
+    </div>
+  </div>
+  <div class="field">
+    <label>루프 길이</label>
+    <div class="loop-length" id="loopLengthDisplay">4.80초</div>
+  </div>
+  <div class="field">
+    <button type="button" id="tapTempoBtn" class="btn secondary">Tap Tempo</button>
+  </div>
+  <div class="field grow">
+    <button type="button" id="startSessionBtn" class="btn primary">세션 시작 (마이크 권한 필요)</button>
+    <button type="button" id="resetSessionBtn" class="btn danger" hidden>세션 초기화</button>
+  </div>
+  <p class="hint" id="setupHint">마이크 사용을 위해 HTTPS 또는 localhost 환경이 필요합니다. "세션 시작"을 누르면 BPM/박자 수가 고정됩니다.</p>
+</section>
+
+<section class="transport" id="transport" hidden>
+  <div class="playhead-wrap">
+    <div class="playhead-bar"><div class="playhead-fill" id="playheadFill"></div></div>
+    <span class="loop-counter" id="loopCounter">Loop 0</span>
+  </div>
+  <div class="transport-controls">
+    <button type="button" id="playAllBtn" class="btn">▶ 전체 재생</button>
+    <button type="button" id="stopAllBtn" class="btn">■ 전체 정지</button>
+    <label class="toggle">
+      <input type="checkbox" id="metronomeToggle" />
+      <span>메트로놈</span>
+    </label>
+    <div class="vol-field">
+      <span>메트로놈 볼륨</span>
+      <input type="range" id="metronomeVol" min="0" max="1" step="0.01" value="0.4" />
+    </div>
+    <div class="vol-field">
+      <span>마스터 볼륨</span>
+      <input type="range" id="masterVol" min="0" max="1.5" step="0.01" value="1" />
+    </div>
+    <div class="mic-meter">
+      <span>Mic</span>
+      <div class="meter-bar"><div class="meter-fill" id="micMeterFill"></div></div>
+    </div>
+  </div>
+</section>
+
+<main class="tracks-grid" id="tracksGrid" hidden></main>
+
+<template id="trackTemplate">
+  <article class="track-card">
+    <header class="track-head">
+      <span class="track-name"></span>
+      <span class="track-status">Empty</span>
+    </header>
+    <div class="track-progress"><div class="track-progress-fill"></div></div>
+    <div class="track-buttons">
+      <button type="button" class="track-record btn record-btn" title="녹음/오버덥">●</button>
+      <button type="button" class="track-play btn" title="재생/정지" disabled>▶</button>
+      <button type="button" class="track-mute btn" title="음소거" disabled>🔇</button>
+      <button type="button" class="track-clear btn" title="지우기" disabled>✕</button>
+      <button type="button" class="track-download btn" title="WAV 다운로드" disabled>⭳</button>
+    </div>
+    <div class="vol-field">
+      <span>볼륨</span>
+      <input type="range" class="track-vol" min="0" max="1.5" step="0.01" value="1" />
+    </div>
+  </article>
+</template>
+
+<footer class="app-footer">
+  <p>단축키: 숫자키 1–6 = 해당 트랙 녹음/정지, Space = 전체 재생/정지</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

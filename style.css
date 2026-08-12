@@ -1,0 +1,202 @@
+:root {
+  --bg: #0f1220;
+  --bg-panel: #171b2e;
+  --bg-card: #1d2238;
+  --border: #2b3155;
+  --text: #e8eaf6;
+  --text-dim: #9aa0c3;
+  --accent: #6c8cff;
+  --accent-2: #ff6c9c;
+  --danger: #ff5470;
+  --ok: #47e0a4;
+  --warn: #ffc857;
+  --radius: 14px;
+  --track-colors: #6c8cff, #ff6c9c, #47e0a4, #ffc857, #b48cff, #4fd6e8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% -10%, #232a4d 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "Segoe UI", "Noto Sans KR", Pretendard, system-ui, -apple-system, sans-serif;
+  padding: 20px 16px 60px;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.9rem;
+  letter-spacing: 0.5px;
+}
+.tagline {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+.setup-panel, .transport {
+  max-width: 980px;
+  margin: 0 auto 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field.grow { flex: 1 1 240px; flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.field label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper input {
+  width: 64px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 1rem;
+}
+.stepper button {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.stepper button:hover { border-color: var(--accent); }
+
+.loop-length {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+  text-align: center;
+}
+
+.hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: transform 0.06s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:active:not(:disabled) { transform: scale(0.96); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn.primary { background: linear-gradient(135deg, var(--accent), #5468ff); border-color: transparent; font-weight: 600; }
+.btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn.secondary { background: transparent; }
+
+.transport-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--text-dim); cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.vol-field { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
+.vol-field input[type=range] { accent-color: var(--accent); width: 110px; }
+
+.mic-meter { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
+.meter-bar { width: 90px; height: 8px; border-radius: 4px; background: var(--bg-card); overflow: hidden; border: 1px solid var(--border); }
+.meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--ok), var(--warn), var(--danger)); transition: width 0.05s linear; }
+
+.playhead-wrap { flex-basis: 100%; display: flex; align-items: center; gap: 12px; }
+.playhead-bar { flex: 1; height: 10px; border-radius: 5px; background: var(--bg-card); border: 1px solid var(--border); overflow: hidden; }
+.playhead-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.loop-counter { font-size: 0.8rem; color: var(--text-dim); min-width: 64px; text-align: right; }
+
+.tracks-grid {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.track-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 3px solid var(--track-accent, var(--accent));
+  position: relative;
+}
+.track-card.armed { box-shadow: 0 0 0 2px var(--warn) inset; }
+.track-card.recording { box-shadow: 0 0 0 2px var(--danger) inset; }
+.track-card.playing { box-shadow: 0 0 0 1px var(--ok) inset; }
+.track-card.muted { opacity: 0.55; }
+
+.track-head { display: flex; justify-content: space-between; align-items: baseline; }
+.track-name { font-weight: 700; }
+.track-status { font-size: 0.75rem; color: var(--text-dim); }
+
+.track-progress { height: 5px; border-radius: 3px; background: #0009; overflow: hidden; }
+.track-progress-fill { height: 100%; width: 0%; background: var(--track-accent, var(--accent)); }
+
+.track-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.track-buttons .btn { padding: 8px 10px; font-size: 1rem; flex: 1 1 auto; }
+.record-btn { color: var(--danger); border-color: var(--danger); }
+.record-btn.is-armed { background: var(--warn); color: #241900; border-color: var(--warn); }
+.record-btn.is-recording { background: var(--danger); color: #fff; border-color: var(--danger); animation: pulse 1s infinite; }
+.track-play.is-playing { border-color: var(--ok); color: var(--ok); }
+.track-mute.is-muted { border-color: var(--warn); color: var(--warn); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.app-footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin-top: 26px;
+}
+
+@media (max-width: 600px) {
+  .setup-panel, .transport { padding: 14px; }
+  .field.grow { flex-direction: column; align-items: stretch; }
+}
