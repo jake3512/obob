@@ -78,6 +78,7 @@
       <button type="button" class="track-mute btn" title="음소거" disabled>🔇</button>
       <button type="button" class="track-clear btn" title="지우기" disabled>✕</button>
       <button type="button" class="track-download btn" title="WAV 다운로드" disabled>⭳</button>
+      <button type="button" class="track-trim btn" title="구간 편집(자르기)" disabled>✂</button>
     </div>
     <div class="vol-field">
       <span>볼륨</span>
@@ -92,6 +93,22 @@
       <span>피치</span>
       <input type="range" class="track-pitch" min="-12" max="12" step="1" value="0" />
       <span class="val-badge track-pitch-val">0st</span>
+    </div>
+    <div class="trim-editor" hidden>
+      <div class="trim-wave-wrap">
+        <canvas class="trim-canvas" width="600" height="80"></canvas>
+        <div class="trim-mask trim-mask-left"></div>
+        <div class="trim-mask trim-mask-right"></div>
+        <div class="trim-handle trim-handle-left"></div>
+        <div class="trim-handle trim-handle-right"></div>
+      </div>
+      <div class="trim-info"><span class="trim-time">0.00s – 0.00s / 0.00s</span></div>
+      <div class="trim-actions">
+        <button type="button" class="btn trim-preview">▶ 미리듣기</button>
+        <button type="button" class="btn trim-apply-loop">✂ 루프에 적용</button>
+        <button type="button" class="btn trim-save-sample">🎹 건반 샘플로 저장</button>
+        <button type="button" class="btn secondary trim-close">닫기</button>
+      </div>
     </div>
   </article>
 </template>

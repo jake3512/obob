@@ -92,6 +92,8 @@
     activeVoices: new Map(),
     keyboardVoice: 'epiano',
     keyboardBaseMidi: 60,
+    customSamples: [],
+    sampleCounter: 0,
     soloSet: new Set(),
     mixerChannels: [],
     metronomeMeter: null,
@@ -477,7 +479,10 @@
       if (!state.started) return;
       key.setPointerCapture(e.pointerId);
       const midi = parseInt(key.dataset.midi, 10);
-      const voice = startMelodicVoice(state.keyboardVoice, noteFreq(midiToFreq(midi)));
+      const sample = state.customSamples.find((s) => s.id === state.keyboardVoice);
+      const voice = sample
+        ? startSampleVoice(sample, midi)
+        : startMelodicVoice(state.keyboardVoice, noteFreq(midiToFreq(midi)));
       state.activeVoices.set(e.pointerId, { voice, pad: key, startedAt: performance.now() });
       key.classList.add('active');
     });
@@ -488,10 +493,24 @@
 
   function wireKeyboardControls() {
     el.voiceSelect.addEventListener('click', (e) => {
+      const removeIcon = e.target.closest('.voice-remove');
+      if (removeIcon) {
+        const btn = removeIcon.closest('.voice-btn');
+        const id = btn.dataset.voice;
+        state.customSamples = state.customSamples.filter((s) => s.id !== id);
+        if (state.keyboardVoice === id) {
+          state.keyboardVoice = 'epiano';
+          state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI.epiano;
+          el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b.dataset.voice === 'epiano'));
+          renderKeyboard();
+        }
+        btn.remove();
+        return;
+      }
       const btn = e.target.closest('.voice-btn');
       if (!btn) return;
       state.keyboardVoice = btn.dataset.voice;
-      state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice];
+      state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] != null ? KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] : 60;
       el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b === btn));
       renderKeyboard();
     });
@@ -791,11 +810,22 @@
       muteBtn: card.querySelector('.track-mute'),
       clearBtn: card.querySelector('.track-clear'),
       downloadBtn: card.querySelector('.track-download'),
+      trimBtn: card.querySelector('.track-trim'),
       volInput: card.querySelector('.track-vol'),
       speedInput: card.querySelector('.track-speed'),
       speedValEl: card.querySelector('.track-speed-val'),
       pitchInput: card.querySelector('.track-pitch'),
       pitchValEl: card.querySelector('.track-pitch-val'),
+      trimEditor: card.querySelector('.trim-editor'),
+      trimWaveWrap: card.querySelector('.trim-wave-wrap'),
+      trimCanvas: card.querySelector('.trim-canvas'),
+      trimMaskLeft: card.querySelector('.trim-mask-left'),
+      trimMaskRight: card.querySelector('.trim-mask-right'),
+      trimHandleLeft: card.querySelector('.trim-handle-left'),
+      trimHandleRight: card.querySelector('.trim-handle-right'),
+      trimTimeEl: card.querySelector('.trim-time'),
+      trimStart: 0,
+      trimEnd: 0,
       gainNode: state.ctx.createGain(),
       panNode: state.ctx.createStereoPanner(),
       volume: 1,
@@ -834,6 +864,16 @@
     track.muteBtn.addEventListener('click', () => onMuteClick(track));
     track.clearBtn.addEventListener('click', () => onClearClick(track));
     track.downloadBtn.addEventListener('click', () => onDownloadClick(track));
+    track.trimBtn.addEventListener('click', () => {
+      if (track.trimEditor.hidden) openTrimEditor(track);
+      else closeTrimEditor(track);
+    });
+    track.trimEditor.querySelector('.trim-preview').addEventListener('click', () => previewTrim(track));
+    track.trimEditor.querySelector('.trim-apply-loop').addEventListener('click', () => applyTrimToLoop(track));
+    track.trimEditor.querySelector('.trim-save-sample').addEventListener('click', () => saveTrimAsSample(track));
+    track.trimEditor.querySelector('.trim-close').addEventListener('click', () => closeTrimEditor(track));
+    wireTrimHandle(track.trimHandleLeft, track, true);
+    wireTrimHandle(track.trimHandleRight, track, false);
     track.volInput.addEventListener('input', () => {
       track.volume = parseFloat(track.volInput.value);
       if (track.mixerFader) {
@@ -912,6 +952,7 @@
     track.clearBtn.disabled = track.state === 'empty';
     track.downloadBtn.disabled = !hasBuffer;
     if (track.mixerDownloadBtn) track.mixerDownloadBtn.disabled = !hasBuffer;
+    track.trimBtn.disabled = !hasBuffer;
   }
 
   function onRecordClick(track) {
@@ -1045,6 +1086,7 @@
     track.buffer = newBuffer;
     track.n = n;
     track.startBoundary = track.recordStartBoundary;
+    closeTrimEditor(track);
     playTrack(track);
   }
 
@@ -1109,6 +1151,7 @@
     track.n = 0;
     track.chunks = [];
     track.state = 'empty';
+    closeTrimEditor(track);
     updateTrackUI(track);
   }
 
@@ -1123,6 +1166,156 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  // ---- Trim editor: cut the front/back of a recorded track, either to
+  // shorten the loop itself or to lift out a clip to play from the keyboard.
+  function drawWaveform(track) {
+    const canvas = track.trimCanvas;
+    const c2d = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    c2d.clearRect(0, 0, w, h);
+    const data = track.buffer.getChannelData(0);
+    const step = Math.max(1, Math.ceil(data.length / w));
+    c2d.fillStyle = track.color;
+    for (let x = 0; x < w; x++) {
+      let min = 1;
+      let max = -1;
+      const start = x * step;
+      for (let i = 0; i < step; i++) {
+        const v = data[start + i];
+        if (v === undefined) break;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      if (max < min) { max = 0; min = 0; }
+      const y1 = (1 - max) * 0.5 * h;
+      const y2 = (1 - min) * 0.5 * h;
+      c2d.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+    }
+  }
+
+  function updateTrimHandles(track) {
+    const dur = track.buffer.duration;
+    const leftPct = (track.trimStart / dur) * 100;
+    const rightPct = (track.trimEnd / dur) * 100;
+    track.trimHandleLeft.style.left = leftPct + '%';
+    track.trimHandleRight.style.left = rightPct + '%';
+    track.trimMaskLeft.style.width = leftPct + '%';
+    track.trimMaskRight.style.width = (100 - rightPct) + '%';
+    track.trimTimeEl.textContent = `${track.trimStart.toFixed(2)}s – ${track.trimEnd.toFixed(2)}s / ${dur.toFixed(2)}s`;
+  }
+
+  function wireTrimHandle(handle, track, isLeft) {
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      handle.dataset.dragging = '1';
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (handle.dataset.dragging !== '1' || !track.buffer) return;
+      const rect = track.trimWaveWrap.getBoundingClientRect();
+      const relX = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      const t = (relX / rect.width) * track.buffer.duration;
+      const minGap = Math.min(0.03, track.buffer.duration / 2);
+      if (isLeft) track.trimStart = Math.max(0, Math.min(t, track.trimEnd - minGap));
+      else track.trimEnd = Math.min(track.buffer.duration, Math.max(t, track.trimStart + minGap));
+      updateTrimHandles(track);
+    });
+    const stopDrag = () => { handle.dataset.dragging = '0'; };
+    handle.addEventListener('pointerup', stopDrag);
+    handle.addEventListener('pointercancel', stopDrag);
+    handle.addEventListener('lostpointercapture', stopDrag);
+  }
+
+  function openTrimEditor(track) {
+    if (!track.buffer) return;
+    track.trimStart = 0;
+    track.trimEnd = track.buffer.duration;
+    track.trimEditor.hidden = false;
+    drawWaveform(track);
+    updateTrimHandles(track);
+  }
+
+  function closeTrimEditor(track) {
+    track.trimEditor.hidden = true;
+  }
+
+  function previewTrim(track) {
+    if (!track.buffer) return;
+    const source = state.ctx.createBufferSource();
+    source.buffer = track.buffer;
+    const g = state.ctx.createGain();
+    source.connect(g);
+    g.connect(track.panNode);
+    source.start(state.ctx.currentTime, track.trimStart, Math.max(0.01, track.trimEnd - track.trimStart));
+  }
+
+  function applyTrimToLoop(track) {
+    if (!track.buffer) return;
+    const ctx = state.ctx;
+    const L = state.loopLength;
+    const trimmedDuration = Math.max(0.05, track.trimEnd - track.trimStart);
+    const n = Math.max(1, Math.round(trimmedDuration / L));
+    const exactLen = Math.max(1, Math.round(n * L * ctx.sampleRate));
+    const newBuffer = ctx.createBuffer(track.buffer.numberOfChannels, exactLen, ctx.sampleRate);
+    const startSample = Math.round(track.trimStart * track.buffer.sampleRate);
+    for (let ch = 0; ch < track.buffer.numberOfChannels; ch++) {
+      const src = track.buffer.getChannelData(ch);
+      const dst = newBuffer.getChannelData(ch);
+      const copyLen = Math.min(dst.length, Math.max(0, src.length - startSample));
+      dst.set(src.subarray(startSample, startSample + copyLen));
+    }
+    track.buffer = newBuffer;
+    track.n = n;
+    track.startBoundary = nextBoundary(ctx.currentTime, state.epoch, L, false);
+    closeTrimEditor(track);
+    playTrack(track);
+  }
+
+  function startSampleVoice(sample, midi) {
+    const ctx = state.ctx;
+    const now = ctx.currentTime;
+    const source = ctx.createBufferSource();
+    source.buffer = sample.buffer;
+    source.playbackRate.value = Math.pow(2, (midi - 60) / 12) * instMultiplier();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(1, now + 0.005);
+    source.connect(gain);
+    gain.connect(state.instrumentBus);
+    source.start(now);
+    return { osc1: source, osc2: null, gain };
+  }
+
+  function addSampleVoiceButton(sample) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'voice-btn sample-voice-btn';
+    btn.dataset.voice = sample.id;
+    btn.innerHTML = `<span class="voice-name">${sample.name}</span><span class="voice-remove" title="삭제">✕</span>`;
+    el.voiceSelect.appendChild(btn);
+    KEYBOARD_DEFAULT_BASE_MIDI[sample.id] = 54;
+  }
+
+  function saveTrimAsSample(track) {
+    if (!track.buffer) return;
+    const ctx = state.ctx;
+    const startSample = Math.round(track.trimStart * track.buffer.sampleRate);
+    const endSample = Math.round(track.trimEnd * track.buffer.sampleRate);
+    const len = Math.max(1, endSample - startSample);
+    const newBuffer = ctx.createBuffer(track.buffer.numberOfChannels, len, track.buffer.sampleRate);
+    for (let ch = 0; ch < track.buffer.numberOfChannels; ch++) {
+      const src = track.buffer.getChannelData(ch);
+      const dst = newBuffer.getChannelData(ch);
+      dst.set(src.subarray(startSample, startSample + len));
+    }
+    state.sampleCounter += 1;
+    const sample = { id: 'sample_' + state.sampleCounter, name: `샘플 ${state.sampleCounter}`, buffer: newBuffer, color: track.color };
+    state.customSamples.push(sample);
+    addSampleVoiceButton(sample);
+    closeTrimEditor(track);
   }
 
   // ---- WAV encoding ----
@@ -1365,6 +1558,9 @@
     el.mixerToggleBtn.classList.remove('active');
     el.drumKit.innerHTML = '';
     el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
+    el.voiceSelect.querySelectorAll('.sample-voice-btn').forEach((b) => b.remove());
+    state.customSamples = [];
+    state.sampleCounter = 0;
     state.keyboardVoice = 'epiano';
     state.keyboardBaseMidi = 60;
     el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b.dataset.voice === 'epiano'));
