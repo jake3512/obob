@@ -90,8 +90,40 @@
       <span>볼륨</span>
       <input type="range" class="track-vol" min="0" max="1.5" step="0.01" value="1" />
     </div>
+    <div class="vol-field">
+      <span>속도</span>
+      <input type="range" class="track-speed" min="0.5" max="2" step="0.01" value="1" />
+      <span class="val-badge track-speed-val">1.00x</span>
+    </div>
+    <div class="vol-field">
+      <span>피치</span>
+      <input type="range" class="track-pitch" min="-12" max="12" step="1" value="0" />
+      <span class="val-badge track-pitch-val">0st</span>
+    </div>
   </article>
 </template>
+
+<section class="instruments-panel" id="instrumentsPanel" hidden>
+  <h2>🥁 악기 &amp; 터치 패드</h2>
+  <p class="hint">타악기 패드는 탭하면 바로 소리가 나고, 저음/기타/리드/일렉피아노 패드는 누르고 있는 동안 소리가 지속돼요. 누른 채로 위아래로 드래그하면 음정이 살짝 휘어집니다(피치 벤드). 연주한 소리는 녹음 중인 트랙에 함께 녹음됩니다.</p>
+  <div class="instrument-controls">
+    <div class="vol-field">
+      <span>악기 속도</span>
+      <input type="range" id="instSpeed" min="0.5" max="2" step="0.01" value="1" />
+      <span class="val-badge" id="instSpeedVal">1.00x</span>
+    </div>
+    <div class="vol-field">
+      <span>악기 피치</span>
+      <input type="range" id="instPitch" min="-12" max="12" step="1" value="0" />
+      <span class="val-badge" id="instPitchVal">0st</span>
+    </div>
+    <div class="vol-field">
+      <span>악기 볼륨</span>
+      <input type="range" id="instVol" min="0" max="1.5" step="0.01" value="1" />
+    </div>
+  </div>
+  <div class="touchpad-grid" id="touchpadGrid"></div>
+</section>
 
 <footer class="app-footer">
   <p>단축키: 숫자키 1–6 = 해당 트랙 녹음/정지, Space = 전체 재생/정지</p>
