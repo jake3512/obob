@@ -394,7 +394,7 @@ body {
 }
 
 .mixer-strip {
-  flex: 0 0 76px;
+  flex: 0 0 84px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -408,21 +408,23 @@ body {
 }
 .mixer-strip.dimmed { opacity: 0.4; }
 
-.mixer-toprow { display: flex; gap: 4px; height: 22px; }
+.mixer-toprow { display: flex; gap: 3px; height: 22px; }
 .mini-btn {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-panel);
   color: var(--text-dim);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 700;
   cursor: pointer;
   padding: 0;
 }
+.mini-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .solo-btn.active { background: var(--warn); border-color: transparent; color: #241900; }
 .mute-btn.active { background: var(--danger); border-color: transparent; color: #fff; }
+.download-btn:not(:disabled):hover { border-color: var(--accent); color: var(--text); }
 
 .mixer-meter {
   width: 8px;

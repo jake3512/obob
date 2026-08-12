@@ -595,19 +595,31 @@
 
     let soloBtn = null;
     let muteBtn = null;
-    if (opts.hasMuteSolo) {
+    let downloadBtn = null;
+    if (opts.hasMuteSolo || opts.hasDownload) {
       const topRow = document.createElement('div');
       topRow.className = 'mixer-toprow';
-      soloBtn = document.createElement('button');
-      soloBtn.type = 'button';
-      soloBtn.className = 'mini-btn solo-btn';
-      soloBtn.textContent = 'S';
-      muteBtn = document.createElement('button');
-      muteBtn.type = 'button';
-      muteBtn.className = 'mini-btn mute-btn';
-      muteBtn.textContent = 'M';
-      topRow.appendChild(soloBtn);
-      topRow.appendChild(muteBtn);
+      if (opts.hasMuteSolo) {
+        soloBtn = document.createElement('button');
+        soloBtn.type = 'button';
+        soloBtn.className = 'mini-btn solo-btn';
+        soloBtn.textContent = 'S';
+        muteBtn = document.createElement('button');
+        muteBtn.type = 'button';
+        muteBtn.className = 'mini-btn mute-btn';
+        muteBtn.textContent = 'M';
+        topRow.appendChild(soloBtn);
+        topRow.appendChild(muteBtn);
+      }
+      if (opts.hasDownload) {
+        downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'mini-btn download-btn';
+        downloadBtn.textContent = '⭳';
+        downloadBtn.title = 'WAV 다운로드';
+        downloadBtn.disabled = true;
+        topRow.appendChild(downloadBtn);
+      }
       strip.appendChild(topRow);
     }
 
@@ -662,8 +674,9 @@
     }
     if (soloBtn) soloBtn.addEventListener('click', () => toggleSolo(opts.id));
     if (muteBtn) muteBtn.addEventListener('click', () => opts.onMuteToggle(muteBtn));
+    if (downloadBtn) downloadBtn.addEventListener('click', () => opts.onDownloadClick());
 
-    return { strip, fader, valBadge, panInput, muteBtn, soloBtn, meterFill };
+    return { strip, fader, valBadge, panInput, muteBtn, soloBtn, downloadBtn, meterFill };
   }
 
   function buildMixer() {
@@ -686,10 +699,13 @@
         onPanChange: (p) => { track.pan = p; track.panNode.pan.value = p; },
         hasMuteSolo: true,
         onMuteToggle: () => onMuteClick(track),
+        hasDownload: true,
+        onDownloadClick: () => onDownloadClick(track),
       });
       track.mixerFader = s.fader;
       track.mixerValEl = s.valBadge;
       track.mixerMuteBtn = s.muteBtn;
+      track.mixerDownloadBtn = s.downloadBtn;
       track.mixerMeterFill = s.meterFill;
       el.mixerStrips.appendChild(s.strip);
       state.mixerChannels.push({ id, stripEl: s.strip, soloBtn: s.soloBtn });
@@ -787,6 +803,7 @@
       mixerFader: null,
       mixerValEl: null,
       mixerMuteBtn: null,
+      mixerDownloadBtn: null,
       mixerMeterFill: null,
       state: 'empty',
       buffer: null,
@@ -894,6 +911,7 @@
 
     track.clearBtn.disabled = track.state === 'empty';
     track.downloadBtn.disabled = !hasBuffer;
+    if (track.mixerDownloadBtn) track.mixerDownloadBtn.disabled = !hasBuffer;
   }
 
   function onRecordClick(track) {
