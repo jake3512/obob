@@ -336,6 +336,29 @@ input, textarea {
 .voice-btn.active { background: var(--accent); border-color: transparent; color: #fff; }
 .octave-controls { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
 
+.chord-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.chord-btn {
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, var(--accent-2), #b9316b);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.05s ease, filter 0.1s ease;
+}
+.chord-btn:active,
+.chord-btn.active {
+  transform: scale(0.95);
+  filter: brightness(1.25);
+}
+
 .piano {
   position: relative;
   height: 210px;

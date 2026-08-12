@@ -34,6 +34,7 @@
     instTabs: $('instTabs'),
     drumKit: $('drumKit'),
     voiceSelect: $('voiceSelect'),
+    chordRow: $('chordRow'),
     octDownBtn: $('octDownBtn'),
     octUpBtn: $('octUpBtn'),
     octaveLabel: $('octaveLabel'),
@@ -81,6 +82,21 @@
     organ: 48,
     marimba: 48,
   };
+
+  // Real open-position guitar chord voicings (absolute MIDI notes per
+  // string, standard tuning) - not just a generic root/third/fifth triad,
+  // so they ring with the same open-string spread a real strummed chord has.
+  const CHORD_DEFS = {
+    C: [48, 52, 55, 60, 64],
+    G: [43, 47, 50, 55, 59, 67],
+    D: [50, 57, 62, 66],
+    A: [45, 52, 57, 62, 64],
+    E: [40, 47, 52, 56, 59, 64],
+    Em: [40, 47, 52, 55, 59, 64],
+    Am: [45, 52, 57, 60, 64],
+    F: [53, 57, 60, 65],
+  };
+  const CHORD_STRUM_STAGGER_MS = 14;
 
   const state = {
     ctx: null,
@@ -578,6 +594,10 @@
     const data = buffer.getChannelData(0);
     const ring = new Float32Array(n);
     for (let i = 0; i < n; i++) ring[i] = Math.random() * 2 - 1;
+    // A real pluck doesn't inject perfectly flat noise - smoothing the
+    // excitation burst slightly avoids a harsh/digital-sounding attack
+    // while keeping it bright.
+    for (let i = 1; i < n; i++) ring[i] = ring[i] * 0.6 + ring[i - 1] * 0.4;
     let idx = 0;
     for (let i = 0; i < totalSamples; i++) {
       const cur = ring[idx];
@@ -587,6 +607,16 @@
       idx = nextIdx;
     }
     return buffer;
+  }
+
+  // How long the buffer needs to be for this decay coefficient to reach
+  // near-silence at this frequency - a fixed duration either wastes buffer
+  // on high notes or, worse, cuts low notes off mid-ring with an audible
+  // click once the buffer runs out while they're still audibly loud.
+  function pluckDuration(freq, decay, maxDuration) {
+    const numPeriods = Math.log(0.001) / Math.log(decay);
+    const seconds = numPeriods / freq + 0.1;
+    return Math.min(maxDuration, Math.max(0.25, seconds));
   }
 
   function makeDistortionCurve(amount) {
@@ -599,26 +629,29 @@
     return curve;
   }
 
-  // decay/duration are tuned per instrument so the buffer comfortably
-  // contains the ring-out (no audible cutoff), and layer adds a second
-  // detuned or octave-up string for chorus/12-string doubling.
+  // decay + maxDuration are tuned per instrument so the buffer comfortably
+  // contains the ring-out (no audible cutoff) without ballooning in size for
+  // very low notes; layer adds a second detuned or octave-up string for
+  // chorus/12-string doubling; body simulates the resonant boom of a wooden
+  // soundbox via a peaking filter after the tone-shaping lowpass.
   const PLUCK_CONFIGS = {
-    bass: { decay: 0.980, duration: 3.0, filterFreq: 2200, filterQ: 0.6, distortion: 0, layer: null, gain: 1.0 },
-    guitar_acoustic: { decay: 0.990, duration: 3.0, filterFreq: 5500, filterQ: 0.5, distortion: 0, layer: null, gain: 0.9 },
-    guitar_electric: { decay: 0.993, duration: 4.0, filterFreq: 6500, filterQ: 0.5, distortion: 0, layer: { ratio: 1.006, gain: 0.45 }, gain: 0.85 },
-    guitar_distortion: { decay: 0.995, duration: 6.0, filterFreq: 3200, filterQ: 1.2, distortion: 60, layer: null, gain: 0.85 },
-    guitar_nylon: { decay: 0.986, duration: 2.2, filterFreq: 2600, filterQ: 0.5, distortion: 0, layer: null, gain: 0.85 },
-    guitar_12str: { decay: 0.990, duration: 3.0, filterFreq: 6000, filterQ: 0.5, distortion: 0, layer: { ratio: 2, gain: 0.5 }, gain: 0.8 },
-    guitar_muted: { decay: 0.930, duration: 0.6, filterFreq: 2200, filterQ: 0.4, distortion: 0, layer: null, gain: 0.9 },
+    bass: { decay: 0.980, maxDuration: 6.0, filterFreq: 2200, filterQ: 0.6, distortion: 0, layer: null, gain: 1.0, body: null },
+    guitar_acoustic: { decay: 0.990, maxDuration: 6.0, filterFreq: 4200, filterQ: 0.6, distortion: 0, layer: null, gain: 0.85, body: { freq: 100, gain: 5, q: 1.0 } },
+    guitar_electric: { decay: 0.993, maxDuration: 8.0, filterFreq: 6500, filterQ: 0.5, distortion: 0, layer: { ratio: 1.006, gain: 0.45 }, gain: 0.85, body: null },
+    guitar_distortion: { decay: 0.995, maxDuration: 10.0, filterFreq: 3200, filterQ: 1.2, distortion: 60, layer: null, gain: 0.85, body: null },
+    guitar_nylon: { decay: 0.986, maxDuration: 5.0, filterFreq: 2600, filterQ: 0.5, distortion: 0, layer: null, gain: 0.85, body: { freq: 150, gain: 4, q: 1.0 } },
+    guitar_12str: { decay: 0.990, maxDuration: 6.0, filterFreq: 5800, filterQ: 0.5, distortion: 0, layer: { ratio: 2, gain: 0.5 }, gain: 0.8, body: { freq: 110, gain: 4, q: 1.0 } },
+    guitar_muted: { decay: 0.930, maxDuration: 1.0, filterFreq: 2200, filterQ: 0.4, distortion: 0, layer: null, gain: 0.9, body: null },
   };
 
   function startPluckedVoice(kind, freq) {
     const cfg = PLUCK_CONFIGS[kind];
     const ctx = state.ctx;
     const now = ctx.currentTime;
+    const duration = pluckDuration(freq, cfg.decay, cfg.maxDuration);
 
     const source = ctx.createBufferSource();
-    source.buffer = karplusStrongBuffer(ctx, freq, cfg.duration, cfg.decay);
+    source.buffer = karplusStrongBuffer(ctx, freq, duration, cfg.decay);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -627,6 +660,15 @@
     source.connect(filter);
 
     let outNode = filter;
+    if (cfg.body) {
+      const bodyFilter = ctx.createBiquadFilter();
+      bodyFilter.type = 'peaking';
+      bodyFilter.frequency.value = cfg.body.freq;
+      bodyFilter.gain.value = cfg.body.gain;
+      bodyFilter.Q.value = cfg.body.q;
+      outNode.connect(bodyFilter);
+      outNode = bodyFilter;
+    }
     if (cfg.distortion) {
       const shaper = ctx.createWaveShaper();
       shaper.curve = makeDistortionCurve(cfg.distortion);
@@ -636,7 +678,8 @@
     }
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(cfg.gain, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(cfg.gain, now + 0.002);
     outNode.connect(gain);
     gain.connect(state.instrumentBus);
     source.start(now);
@@ -644,7 +687,7 @@
     let osc2 = null;
     if (cfg.layer) {
       osc2 = ctx.createBufferSource();
-      osc2.buffer = karplusStrongBuffer(ctx, freq * cfg.layer.ratio, cfg.duration, cfg.decay);
+      osc2.buffer = karplusStrongBuffer(ctx, freq * cfg.layer.ratio, duration, cfg.decay);
       const layerGain = ctx.createGain();
       layerGain.gain.value = cfg.layer.gain;
       osc2.connect(layerGain);
@@ -979,6 +1022,40 @@
     key.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
   }
 
+  // ---- Chord shortcuts (guitar voices only): one tap strums a full real
+  // open-chord voicing instead of picking a single note.
+  function updateChordRowVisibility() {
+    el.chordRow.hidden = !state.keyboardVoice.startsWith('guitar_');
+  }
+
+  function strumChord(notes) {
+    const kind = state.keyboardVoice;
+    notes.forEach((midi, i) => {
+      setTimeout(() => {
+        if (!state.started) return;
+        startMelodicVoice(kind, noteFreq(midiToFreq(midi)));
+      }, i * CHORD_STRUM_STAGGER_MS);
+    });
+  }
+
+  function buildChordRow() {
+    el.chordRow.innerHTML = '';
+    Object.keys(CHORD_DEFS).forEach((name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chord-btn';
+      btn.textContent = name;
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (!state.started) return;
+        strumChord(CHORD_DEFS[name]);
+        btn.classList.add('active');
+        setTimeout(() => btn.classList.remove('active'), 150);
+      });
+      el.chordRow.appendChild(btn);
+    });
+  }
+
   function wireKeyboardControls() {
     el.voiceSelect.addEventListener('click', (e) => {
       const removeIcon = e.target.closest('.voice-remove');
@@ -991,6 +1068,7 @@
           state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI.epiano;
           el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b.dataset.voice === 'epiano'));
           renderKeyboard();
+          updateChordRowVisibility();
         }
         btn.remove();
         return;
@@ -1001,6 +1079,7 @@
       state.keyboardBaseMidi = KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] != null ? KEYBOARD_DEFAULT_BASE_MIDI[state.keyboardVoice] : 60;
       el.voiceSelect.querySelectorAll('.voice-btn').forEach((b) => b.classList.toggle('active', b === btn));
       renderKeyboard();
+      updateChordRowVisibility();
     });
     el.octDownBtn.addEventListener('click', () => {
       state.keyboardBaseMidi = Math.max(12, state.keyboardBaseMidi - 12);
@@ -1990,6 +2069,8 @@
     buildTracks();
     buildDrumPads();
     renderKeyboard();
+    buildChordRow();
+    updateChordRowVisibility();
     buildMixer();
 
     el.bpmInput.disabled = true;
@@ -2057,6 +2138,8 @@
     el.mixerToggleBtn.classList.remove('active');
     el.drumKit.innerHTML = '';
     el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
+    el.chordRow.innerHTML = '';
+    el.chordRow.hidden = true;
     el.voiceSelect.querySelectorAll('.sample-voice-btn').forEach((b) => b.remove());
     state.customSamples = [];
     state.sampleCounter = 0;
