@@ -22,8 +22,7 @@
     playAllBtn: $('playAllBtn'),
     stopAllBtn: $('stopAllBtn'),
     metronomeToggle: $('metronomeToggle'),
-    metronomeVol: $('metronomeVol'),
-    masterVol: $('masterVol'),
+    mixerToggleBtn: $('mixerToggleBtn'),
     micMeterFill: $('micMeterFill'),
     tracksGrid: $('tracksGrid'),
     trackTemplate: $('trackTemplate'),
@@ -32,7 +31,6 @@
     instSpeedVal: $('instSpeedVal'),
     instPitch: $('instPitch'),
     instPitchVal: $('instPitchVal'),
-    instVol: $('instVol'),
     instTabs: $('instTabs'),
     drumKit: $('drumKit'),
     voiceSelect: $('voiceSelect'),
@@ -40,6 +38,8 @@
     octUpBtn: $('octUpBtn'),
     octaveLabel: $('octaveLabel'),
     pianoKeys: $('pianoKeys'),
+    mixerPanel: $('mixerPanel'),
+    mixerStrips: $('mixerStrips'),
   };
 
   // Positioned like a real kit viewed from the drummer's seat: hats/tom/crash
@@ -80,12 +80,23 @@
     tracks: [],
     tapTimes: [],
     instrumentBus: null,
+    instPanner: null,
     instSpeed: 1,
     instPitchSemis: 0,
+    instVolume: 1,
+    instPan: 0,
+    instMuted: false,
+    metronomeVolume: 0.4,
+    metronomeMuted: false,
     noiseBuffer: null,
     activeVoices: new Map(),
     keyboardVoice: 'epiano',
     keyboardBaseMidi: 60,
+    soloSet: new Set(),
+    mixerChannels: [],
+    metronomeMeter: null,
+    instMeter: null,
+    masterMeter: null,
   };
 
   function nextBoundary(now, epoch, cycleLen, strict) {
@@ -516,9 +527,232 @@
       state.instPitchSemis = parseInt(el.instPitch.value, 10);
       el.instPitchVal.textContent = (state.instPitchSemis > 0 ? '+' : '') + state.instPitchSemis + 'st';
     });
-    el.instVol.addEventListener('input', () => {
-      if (state.instrumentBus) state.instrumentBus.gain.value = parseFloat(el.instVol.value);
+  }
+
+  // ---- Mixer: per-channel volume/pan/mute/solo + level metering ----
+  function attachMeter(node) {
+    const analyser = state.ctx.createAnalyser();
+    analyser.fftSize = 256;
+    node.connect(analyser);
+    return { analyser, buf: new Uint8Array(analyser.fftSize) };
+  }
+
+  function meterLevel(meter) {
+    meter.analyser.getByteTimeDomainData(meter.buf);
+    let sumSq = 0;
+    for (let i = 0; i < meter.buf.length; i++) {
+      const v = (meter.buf[i] - 128) / 128;
+      sumSq += v * v;
+    }
+    return Math.sqrt(sumSq / meter.buf.length);
+  }
+
+  function isSoloActive() {
+    return state.soloSet.size > 0;
+  }
+  function isAudible(channelId, ownMuted) {
+    if (ownMuted) return false;
+    if (isSoloActive() && !state.soloSet.has(channelId)) return false;
+    return true;
+  }
+
+  function refreshTrackGain(track) {
+    track.gainNode.gain.value = isAudible('track' + track.id, track.isMuted) ? track.volume : 0;
+  }
+  function refreshMetronomeGain() {
+    if (!state.metronomeGain) return;
+    state.metronomeGain.gain.value = isAudible('metronome', state.metronomeMuted) ? state.metronomeVolume : 0;
+  }
+  function refreshInstrumentGain() {
+    if (!state.instrumentBus) return;
+    state.instrumentBus.gain.value = isAudible('instruments', state.instMuted) ? state.instVolume : 0;
+  }
+  function refreshAllGains() {
+    state.tracks.forEach(refreshTrackGain);
+    refreshMetronomeGain();
+    refreshInstrumentGain();
+  }
+
+  function refreshAllMixerVisuals() {
+    const active = isSoloActive();
+    state.mixerChannels.forEach((ch) => {
+      if (ch.soloBtn) ch.soloBtn.classList.toggle('active', state.soloSet.has(ch.id));
+      ch.stripEl.classList.toggle('dimmed', active && !state.soloSet.has(ch.id));
     });
+  }
+
+  function toggleSolo(id) {
+    if (state.soloSet.has(id)) state.soloSet.delete(id);
+    else state.soloSet.add(id);
+    refreshAllGains();
+    refreshAllMixerVisuals();
+  }
+
+  function buildChannelStrip(opts) {
+    const strip = document.createElement('div');
+    strip.className = 'mixer-strip';
+    strip.style.setProperty('--strip-color', opts.color || 'var(--accent)');
+
+    let soloBtn = null;
+    let muteBtn = null;
+    if (opts.hasMuteSolo) {
+      const topRow = document.createElement('div');
+      topRow.className = 'mixer-toprow';
+      soloBtn = document.createElement('button');
+      soloBtn.type = 'button';
+      soloBtn.className = 'mini-btn solo-btn';
+      soloBtn.textContent = 'S';
+      muteBtn = document.createElement('button');
+      muteBtn.type = 'button';
+      muteBtn.className = 'mini-btn mute-btn';
+      muteBtn.textContent = 'M';
+      topRow.appendChild(soloBtn);
+      topRow.appendChild(muteBtn);
+      strip.appendChild(topRow);
+    }
+
+    const meterBar = document.createElement('div');
+    meterBar.className = 'mixer-meter';
+    const meterFill = document.createElement('div');
+    meterFill.className = 'mixer-meter-fill';
+    meterBar.appendChild(meterFill);
+    strip.appendChild(meterBar);
+
+    const faderWrap = document.createElement('div');
+    faderWrap.className = 'fader-wrap';
+    const fader = document.createElement('input');
+    fader.type = 'range';
+    fader.className = 'fader';
+    fader.min = opts.volumeMin;
+    fader.max = opts.volumeMax;
+    fader.step = opts.volumeStep;
+    fader.value = opts.initialVolume;
+    faderWrap.appendChild(fader);
+    strip.appendChild(faderWrap);
+
+    const valBadge = document.createElement('div');
+    valBadge.className = 'mixer-val';
+    valBadge.textContent = Math.round(opts.initialVolume * 100) + '%';
+    strip.appendChild(valBadge);
+
+    let panInput = null;
+    if (opts.hasPan) {
+      panInput = document.createElement('input');
+      panInput.type = 'range';
+      panInput.className = 'pan-knob';
+      panInput.min = -1;
+      panInput.max = 1;
+      panInput.step = 0.05;
+      panInput.value = opts.initialPan || 0;
+      strip.appendChild(panInput);
+    }
+
+    const label = document.createElement('div');
+    label.className = 'mixer-label';
+    label.textContent = opts.name;
+    strip.appendChild(label);
+
+    fader.addEventListener('input', () => {
+      const v = parseFloat(fader.value);
+      valBadge.textContent = Math.round(v * 100) + '%';
+      opts.onVolumeChange(v);
+    });
+    if (panInput) {
+      panInput.addEventListener('input', () => opts.onPanChange(parseFloat(panInput.value)));
+    }
+    if (soloBtn) soloBtn.addEventListener('click', () => toggleSolo(opts.id));
+    if (muteBtn) muteBtn.addEventListener('click', () => opts.onMuteToggle(muteBtn));
+
+    return { strip, fader, valBadge, panInput, muteBtn, soloBtn, meterFill };
+  }
+
+  function buildMixer() {
+    el.mixerStrips.innerHTML = '';
+    state.mixerChannels = [];
+
+    state.tracks.forEach((track) => {
+      const id = 'track' + track.id;
+      const s = buildChannelStrip({
+        id,
+        name: track.name,
+        color: track.color,
+        volumeMin: 0,
+        volumeMax: 1.5,
+        volumeStep: 0.01,
+        initialVolume: track.volume,
+        onVolumeChange: (v) => { track.volume = v; track.volInput.value = v; refreshTrackGain(track); },
+        hasPan: true,
+        initialPan: track.pan,
+        onPanChange: (p) => { track.pan = p; track.panNode.pan.value = p; },
+        hasMuteSolo: true,
+        onMuteToggle: () => onMuteClick(track),
+      });
+      track.mixerFader = s.fader;
+      track.mixerValEl = s.valBadge;
+      track.mixerMuteBtn = s.muteBtn;
+      track.mixerMeterFill = s.meterFill;
+      el.mixerStrips.appendChild(s.strip);
+      state.mixerChannels.push({ id, stripEl: s.strip, soloBtn: s.soloBtn });
+    });
+
+    const metStrip = buildChannelStrip({
+      id: 'metronome',
+      name: '메트로놈',
+      color: '#ffc857',
+      volumeMin: 0,
+      volumeMax: 1,
+      volumeStep: 0.01,
+      initialVolume: state.metronomeVolume,
+      onVolumeChange: (v) => { state.metronomeVolume = v; refreshMetronomeGain(); },
+      hasPan: false,
+      hasMuteSolo: true,
+      onMuteToggle: (btn) => {
+        state.metronomeMuted = !state.metronomeMuted;
+        btn.classList.toggle('active', state.metronomeMuted);
+        refreshMetronomeGain();
+      },
+    });
+    el.mixerStrips.appendChild(metStrip.strip);
+    state.metronomeMixerMeterFill = metStrip.meterFill;
+    state.mixerChannels.push({ id: 'metronome', stripEl: metStrip.strip, soloBtn: metStrip.soloBtn });
+
+    const instStrip = buildChannelStrip({
+      id: 'instruments',
+      name: '악기',
+      color: '#6c8cff',
+      volumeMin: 0,
+      volumeMax: 1.5,
+      volumeStep: 0.01,
+      initialVolume: state.instVolume,
+      onVolumeChange: (v) => { state.instVolume = v; refreshInstrumentGain(); },
+      hasPan: true,
+      initialPan: state.instPan,
+      onPanChange: (p) => { state.instPan = p; state.instPanner.pan.value = p; },
+      hasMuteSolo: true,
+      onMuteToggle: (btn) => {
+        state.instMuted = !state.instMuted;
+        btn.classList.toggle('active', state.instMuted);
+        refreshInstrumentGain();
+      },
+    });
+    el.mixerStrips.appendChild(instStrip.strip);
+    state.instMixerMeterFill = instStrip.meterFill;
+    state.mixerChannels.push({ id: 'instruments', stripEl: instStrip.strip, soloBtn: instStrip.soloBtn });
+
+    const masterStrip = buildChannelStrip({
+      id: 'master',
+      name: '마스터',
+      color: '#47e0a4',
+      volumeMin: 0,
+      volumeMax: 1.5,
+      volumeStep: 0.01,
+      initialVolume: state.masterGain.gain.value,
+      onVolumeChange: (v) => { state.masterGain.gain.value = v; },
+      hasPan: false,
+      hasMuteSolo: false,
+    });
+    el.mixerStrips.appendChild(masterStrip.strip);
+    state.masterMixerMeterFill = masterStrip.meterFill;
   }
 
   // ---- Track lifecycle ----
@@ -547,6 +781,13 @@
       pitchInput: card.querySelector('.track-pitch'),
       pitchValEl: card.querySelector('.track-pitch-val'),
       gainNode: state.ctx.createGain(),
+      panNode: state.ctx.createStereoPanner(),
+      volume: 1,
+      pan: 0,
+      mixerFader: null,
+      mixerValEl: null,
+      mixerMuteBtn: null,
+      mixerMeterFill: null,
       state: 'empty',
       buffer: null,
       n: 0,
@@ -565,8 +806,11 @@
     };
 
     track.nameEl.textContent = track.name;
-    track.gainNode.gain.value = parseFloat(track.volInput.value);
-    track.gainNode.connect(state.masterGain);
+    track.volume = parseFloat(track.volInput.value);
+    track.gainNode.gain.value = track.volume;
+    track.gainNode.connect(track.panNode);
+    track.panNode.connect(state.masterGain);
+    track.meter = attachMeter(track.gainNode);
 
     track.recordBtn.addEventListener('click', () => onRecordClick(track));
     track.playBtn.addEventListener('click', () => onPlayClick(track));
@@ -574,7 +818,12 @@
     track.clearBtn.addEventListener('click', () => onClearClick(track));
     track.downloadBtn.addEventListener('click', () => onDownloadClick(track));
     track.volInput.addEventListener('input', () => {
-      if (!track.isMuted) track.gainNode.gain.value = parseFloat(track.volInput.value);
+      track.volume = parseFloat(track.volInput.value);
+      if (track.mixerFader) {
+        track.mixerFader.value = track.volume;
+        track.mixerValEl.textContent = Math.round(track.volume * 100) + '%';
+      }
+      refreshTrackGain(track);
     });
     track.speedInput.addEventListener('input', () => {
       track.speed = parseFloat(track.speedInput.value);
@@ -641,6 +890,7 @@
 
     track.muteBtn.disabled = !hasBuffer;
     track.muteBtn.classList.toggle('is-muted', track.isMuted);
+    if (track.mixerMuteBtn) track.mixerMuteBtn.classList.toggle('active', track.isMuted);
 
     track.clearBtn.disabled = track.state === 'empty';
     track.downloadBtn.disabled = !hasBuffer;
@@ -818,7 +1068,7 @@
 
   function onMuteClick(track) {
     track.isMuted = !track.isMuted;
-    track.gainNode.gain.value = track.isMuted ? 0 : parseFloat(track.volInput.value);
+    refreshTrackGain(track);
     updateTrackUI(track);
   }
 
@@ -952,6 +1202,21 @@
       state.activeVoices.forEach((rec, pointerId) => {
         if (performance.now() - rec.startedAt > 10000) releaseVoiceForPointer(pointerId);
       });
+
+      if (!el.mixerPanel.hidden) {
+        state.tracks.forEach((t) => {
+          if (t.mixerMeterFill) t.mixerMeterFill.style.height = Math.min(100, meterLevel(t.meter) * 260) + '%';
+        });
+        if (state.metronomeMeter && state.metronomeMixerMeterFill) {
+          state.metronomeMixerMeterFill.style.height = Math.min(100, meterLevel(state.metronomeMeter) * 260) + '%';
+        }
+        if (state.instMeter && state.instMixerMeterFill) {
+          state.instMixerMeterFill.style.height = Math.min(100, meterLevel(state.instMeter) * 260) + '%';
+        }
+        if (state.masterMeter && state.masterMixerMeterFill) {
+          state.masterMixerMeterFill.style.height = Math.min(100, meterLevel(state.masterMeter) * 260) + '%';
+        }
+      }
     }
     state.rafId = requestAnimationFrame(animate);
   }
@@ -984,18 +1249,26 @@
     state.micSource.connect(state.micAnalyser);
 
     state.masterGain = state.ctx.createGain();
-    state.masterGain.gain.value = parseFloat(el.masterVol.value);
+    state.masterGain.gain.value = 1;
     state.masterGain.connect(state.ctx.destination);
 
     state.metronomeGain = state.ctx.createGain();
-    state.metronomeGain.gain.value = parseFloat(el.metronomeVol.value);
+    state.metronomeGain.gain.value = state.metronomeVolume;
     state.metronomeGain.connect(state.masterGain);
 
     state.instrumentBus = state.ctx.createGain();
-    state.instrumentBus.gain.value = parseFloat(el.instVol.value);
-    state.instrumentBus.connect(state.masterGain);
+    state.instrumentBus.gain.value = state.instVolume;
+    state.instPanner = state.ctx.createStereoPanner();
+    state.instPanner.pan.value = state.instPan;
+    state.instrumentBus.connect(state.instPanner);
+    state.instPanner.connect(state.masterGain);
     state.noiseBuffer = null;
     state.activeVoices = new Map();
+    state.soloSet = new Set();
+
+    state.metronomeMeter = attachMeter(state.metronomeGain);
+    state.instMeter = attachMeter(state.instrumentBus);
+    state.masterMeter = attachMeter(state.masterGain);
 
     state.bpm = Math.max(1, parseInt(el.bpmInput.value, 10) || 100);
     state.beatsPerLoop = Math.max(1, parseInt(el.beatsInput.value, 10) || 8);
@@ -1008,6 +1281,7 @@
     buildTracks();
     buildDrumPads();
     renderKeyboard();
+    buildMixer();
 
     el.bpmInput.disabled = true;
     el.beatsInput.disabled = true;
@@ -1046,14 +1320,31 @@
     state.masterGain = null;
     state.metronomeGain = null;
     state.instrumentBus = null;
+    state.instPanner = null;
     state.noiseBuffer = null;
     state.started = false;
     state.tracks = [];
+    state.soloSet = new Set();
+    state.mixerChannels = [];
+    state.metronomeMeter = null;
+    state.instMeter = null;
+    state.masterMeter = null;
+    state.metronomeMixerMeterFill = null;
+    state.instMixerMeterFill = null;
+    state.masterMixerMeterFill = null;
+    state.metronomeVolume = 0.4;
+    state.metronomeMuted = false;
+    state.instVolume = 1;
+    state.instPan = 0;
+    state.instMuted = false;
 
     el.tracksGrid.innerHTML = '';
     el.tracksGrid.hidden = true;
     el.transport.hidden = true;
     el.instrumentsPanel.hidden = true;
+    el.mixerPanel.hidden = true;
+    el.mixerStrips.innerHTML = '';
+    el.mixerToggleBtn.classList.remove('active');
     el.drumKit.innerHTML = '';
     el.pianoKeys.querySelectorAll('.piano-white-row, .piano-black-row').forEach((r) => { r.innerHTML = ''; });
     state.keyboardVoice = 'epiano';
@@ -1075,7 +1366,6 @@
     state.instPitchSemis = 0;
     el.instSpeed.value = 1;
     el.instPitch.value = 0;
-    el.instVol.value = 1;
     el.instSpeedVal.textContent = '1.00x';
     el.instPitchVal.textContent = '0st';
   }
@@ -1088,11 +1378,9 @@
     el.metronomeToggle.addEventListener('change', () => {
       state.metronomeOn = el.metronomeToggle.checked;
     });
-    el.metronomeVol.addEventListener('input', () => {
-      if (state.metronomeGain) state.metronomeGain.gain.value = parseFloat(el.metronomeVol.value);
-    });
-    el.masterVol.addEventListener('input', () => {
-      if (state.masterGain) state.masterGain.gain.value = parseFloat(el.masterVol.value);
+    el.mixerToggleBtn.addEventListener('click', () => {
+      el.mixerPanel.hidden = !el.mixerPanel.hidden;
+      el.mixerToggleBtn.classList.toggle('active', !el.mixerPanel.hidden);
     });
   }
 

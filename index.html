@@ -55,14 +55,7 @@
       <input type="checkbox" id="metronomeToggle" />
       <span>메트로놈</span>
     </label>
-    <div class="vol-field">
-      <span>메트로놈 볼륨</span>
-      <input type="range" id="metronomeVol" min="0" max="1" step="0.01" value="0.4" />
-    </div>
-    <div class="vol-field">
-      <span>마스터 볼륨</span>
-      <input type="range" id="masterVol" min="0" max="1.5" step="0.01" value="1" />
-    </div>
+    <button type="button" class="btn" id="mixerToggleBtn">🎚 믹서</button>
     <div class="mic-meter">
       <span>Mic</span>
       <div class="meter-bar"><div class="meter-fill" id="micMeterFill"></div></div>
@@ -117,10 +110,6 @@
       <input type="range" id="instPitch" min="-12" max="12" step="1" value="0" />
       <span class="val-badge" id="instPitchVal">0st</span>
     </div>
-    <div class="vol-field">
-      <span>악기 볼륨</span>
-      <input type="range" id="instVol" min="0" max="1.5" step="0.01" value="1" />
-    </div>
   </div>
 
   <div class="inst-tabs" id="instTabs">
@@ -151,6 +140,12 @@
       <div class="piano-black-row"></div>
     </div>
   </div>
+</section>
+
+<section class="mixer-panel" id="mixerPanel" hidden>
+  <h2>🎚️ 믹서</h2>
+  <p class="hint">각 채널의 볼륨·팬·음소거·솔로를 한눈에 조절하세요. S(솔로)를 누르면 그 채널만 들리고 나머지는 자동으로 조용해집니다.</p>
+  <div class="mixer-strips" id="mixerStrips"></div>
 </section>
 
 <footer class="app-footer">

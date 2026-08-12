@@ -120,6 +120,7 @@ body {
 .btn:active:not(:disabled) { transform: scale(0.96); }
 .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn.primary { background: linear-gradient(135deg, var(--accent), #5468ff); border-color: transparent; font-weight: 600; }
+.btn.active { background: linear-gradient(135deg, var(--accent), #5468ff); border-color: transparent; }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.secondary { background: transparent; }
 
@@ -373,6 +374,104 @@ body {
 }
 .piano-black-row .key.active { background: linear-gradient(180deg, var(--accent-2), #b9316b); }
 
+/* ---- Mixer ---- */
+.mixer-panel {
+  max-width: 980px;
+  margin: 0 auto 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.mixer-panel h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.mixer-panel .hint { margin: 0 0 14px; }
+
+.mixer-strips {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.mixer-strip {
+  flex: 0 0 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--strip-color, var(--accent));
+  border-radius: 10px;
+  padding: 10px 6px 12px;
+  transition: opacity 0.15s ease;
+}
+.mixer-strip.dimmed { opacity: 0.4; }
+
+.mixer-toprow { display: flex; gap: 4px; height: 22px; }
+.mini-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.solo-btn.active { background: var(--warn); border-color: transparent; color: #241900; }
+.mute-btn.active { background: var(--danger); border-color: transparent; color: #fff; }
+
+.mixer-meter {
+  width: 8px;
+  height: 46px;
+  background: #0009;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
+}
+.mixer-meter-fill {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(0deg, var(--ok), var(--warn) 75%, var(--danger));
+}
+
+.fader-wrap {
+  width: 44px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fader-wrap .fader {
+  width: 110px;
+  height: 28px;
+  transform: rotate(-90deg);
+  accent-color: var(--strip-color, var(--accent));
+}
+
+.mixer-val {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pan-knob {
+  width: 56px;
+  accent-color: var(--strip-color, var(--accent));
+}
+
+.mixer-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  word-break: keep-all;
+}
+
 .app-footer {
   text-align: center;
   color: var(--text-dim);
@@ -383,7 +482,5 @@ body {
 @media (max-width: 600px) {
   .setup-panel, .transport { padding: 14px; }
   .field.grow { flex-direction: column; align-items: stretch; }
-  .touchpad-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-  .fretboard { height: 200px; }
   .piano { height: 150px; }
 }
