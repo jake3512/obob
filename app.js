@@ -43,19 +43,19 @@
   };
 
   // Positioned like a real kit viewed from the drummer's seat: hats/tom/crash
-  // up top, snare front-center, kick largest and lowest. Pads with startVoice
-  // ring for as long as they're held (release fades them out); clap has no
-  // natural sustain so it stays a fixed one-shot hit via `trigger`.
+  // up top, snare front-center, kick largest and lowest. Every pad is a
+  // fixed-length one-shot hit - holding a pad down longer doesn't extend
+  // the sound, the way pressing on a drum head can't sustain a hit.
   const DRUM_PADS = [
-    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 14, startVoice: (t) => startHatVoice(t, false) },
-    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 30, startVoice: (t) => startHatVoice(t, true) },
-    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 54, startVoice: (t) => startTomVoice(t) },
-    { id: 'cowbell', name: '카우벨', icon: '🛎️', color: '#ff9d4d', size: 'sm', top: 14, left: 80, startVoice: (t) => startCowbellVoice(t) },
-    { id: 'tambourine', name: '탬버린', icon: '🔘', color: '#a8e063', size: 'sm', top: 46, left: 14, startVoice: (t) => startTambourineVoice(t) },
-    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 48, left: 38, startVoice: (t) => startSnareVoice(t) },
-    { id: 'shaker', name: '셰이커', icon: '🪇', color: '#7fe0c0', size: 'sm', top: 46, left: 82, startVoice: (t) => startShakerVoice(t) },
+    { id: 'hatC', name: '하이햇C', icon: '🎩', color: '#ffc857', size: 'sm', top: 14, left: 14, trigger: (t) => playHat(t, false) },
+    { id: 'hatO', name: '하이햇O', icon: '👒', color: '#ffd97d', size: 'sm', top: 14, left: 30, trigger: (t) => playHat(t, true) },
+    { id: 'tom', name: '탐', icon: '🔔', color: '#4fd6e8', size: 'md', top: 12, left: 54, trigger: (t) => playTom(t) },
+    { id: 'cowbell', name: '카우벨', icon: '🛎️', color: '#ff9d4d', size: 'sm', top: 14, left: 80, trigger: (t) => playCowbell(t) },
+    { id: 'tambourine', name: '탬버린', icon: '🔘', color: '#a8e063', size: 'sm', top: 46, left: 14, trigger: (t) => playTambourine(t) },
+    { id: 'snare', name: '스네어', icon: '🪘', color: '#ff6c9c', size: 'md', top: 48, left: 38, trigger: (t) => playSnare(t) },
+    { id: 'shaker', name: '셰이커', icon: '🪇', color: '#7fe0c0', size: 'sm', top: 46, left: 82, trigger: (t) => playShaker(t) },
     { id: 'clap', name: '클랩', icon: '👏', color: '#47e0a4', size: 'sm', top: 72, left: 16, trigger: (t) => playClap(t) },
-    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 72, left: 56, startVoice: (t) => startKickVoice(t) },
+    { id: 'kick', name: '킥', icon: '🥁', color: '#ff5470', size: 'lg', top: 72, left: 56, trigger: (t) => playKick(t) },
   ];
 
   const OCTAVE_WHITE_OFFSETS = [0, 2, 4, 5, 7, 9, 11];
@@ -264,7 +264,7 @@
   // a sustain floor instead of silence, and the noise/oscillator sources are
   // left running (not stopped) so how long the pad is held controls how long
   // it rings - release fades it out early, or it just holds at the floor.
-  function startKickVoice(time) {
+  function playKick(time) {
     const ctx = state.ctx;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
@@ -273,10 +273,11 @@
     osc.frequency.exponentialRampToValueAtTime(noteFreq(45), time + envTime(0.15));
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(1, time + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.22, time + envTime(0.35));
+    g.gain.exponentialRampToValueAtTime(0.001, time + envTime(0.35));
     osc.connect(g);
     g.connect(state.instrumentBus);
     osc.start(time);
+    osc.stop(time + envTime(0.4));
 
     // A short high-passed noise click at the very onset - real kick drums
     // have this beater-on-head transient, and without it a pure sine sweep
@@ -294,16 +295,15 @@
     clickGain.connect(state.instrumentBus);
     click.start(time);
     click.stop(time + 0.02);
-
-    return { osc1: osc, osc2: null, gain: g };
   }
 
-  function startSnareVoice(time) {
+  function playSnare(time) {
     const ctx = state.ctx;
     const g = ctx.createGain();
+    const decayEnd = time + envTime(0.2);
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(1, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.16, time + envTime(0.2));
+    g.gain.exponentialRampToValueAtTime(0.001, decayEnd);
 
     // Shell body: two close partials for the tonal "crack" under the wires.
     const osc1 = ctx.createOscillator();
@@ -311,6 +311,7 @@
     osc1.frequency.value = noteFreq(180);
     osc1.connect(g);
     osc1.start(time);
+    osc1.stop(decayEnd + 0.05);
 
     const osc2 = ctx.createOscillator();
     osc2.type = 'sine';
@@ -320,6 +321,7 @@
     osc2.connect(osc2Gain);
     osc2Gain.connect(g);
     osc2.start(time);
+    osc2.stop(decayEnd + 0.05);
 
     // Wire buzz: the sustained rattle that keeps going after the initial hit.
     const buzz = ctx.createBufferSource();
@@ -331,6 +333,7 @@
     buzz.connect(buzzFilter);
     buzzFilter.connect(g);
     buzz.start(time);
+    buzz.stop(decayEnd + 0.05);
 
     g.connect(state.instrumentBus);
 
@@ -351,8 +354,6 @@
     snapGain.connect(state.instrumentBus);
     snap.start(time);
     snap.stop(time + 0.08);
-
-    return { osc1, osc2, gain: g, extra: [buzz] };
   }
 
   // Six square oscillators at inharmonic ratios, summed and highpassed -
@@ -371,7 +372,7 @@
     });
   }
 
-  function startHatVoice(time, open) {
+  function playHat(time, open) {
     const ctx = state.ctx;
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
@@ -380,7 +381,7 @@
     const decayT = open ? envTime(0.5) : envTime(0.08);
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(0.65, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(open ? 0.2 : 0.045, time + decayT);
+    g.gain.exponentialRampToValueAtTime(0.001, time + decayT);
 
     const oscs = connectMetallicBank(ctx, time, 205, hp);
 
@@ -395,7 +396,10 @@
 
     hp.connect(g);
     g.connect(state.instrumentBus);
-    return { osc1: oscs[0], osc2: noise, gain: g, extra: oscs.slice(1) };
+
+    const stopAt = time + decayT + 0.05;
+    oscs.forEach((o) => o.stop(stopAt));
+    noise.stop(stopAt);
   }
 
   function playClap(time) {
@@ -438,8 +442,9 @@
     tail.stop(tailTime + envTime(0.18));
   }
 
-  function startTomVoice(time) {
+  function playTom(time) {
     const ctx = state.ctx;
+    const decayEnd = time + envTime(0.3);
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     const g = ctx.createGain();
@@ -447,8 +452,10 @@
     osc.frequency.exponentialRampToValueAtTime(noteFreq(90), time + envTime(0.25));
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(1, time + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.2, time + envTime(0.3));
+    g.gain.exponentialRampToValueAtTime(0.001, decayEnd);
     osc.connect(g);
+    osc.start(time);
+    osc.stop(decayEnd + 0.05);
 
     const overtone = ctx.createOscillator();
     overtone.type = 'sine';
@@ -459,6 +466,7 @@
     overtone.connect(overtoneGain);
     overtoneGain.connect(g);
     overtone.start(time);
+    overtone.stop(decayEnd + 0.05);
 
     const click = ctx.createBufferSource();
     click.buffer = ensureNoiseBuffer();
@@ -476,20 +484,19 @@
     click.stop(time + 0.02);
 
     g.connect(state.instrumentBus);
-    osc.start(time);
-    return { osc1: osc, osc2: overtone, gain: g };
   }
 
-  function startTambourineVoice(time) {
+  function playTambourine(time) {
     const ctx = state.ctx;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
     bp.frequency.value = 6500;
     bp.Q.value = 1.5;
     const g = ctx.createGain();
+    const decayEnd = time + envTime(0.35);
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(0.55, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.16, time + envTime(0.35));
+    g.gain.exponentialRampToValueAtTime(0.001, decayEnd);
 
     const oscs = connectMetallicBank(ctx, time, 420, bp);
 
@@ -504,11 +511,15 @@
 
     bp.connect(g);
     g.connect(state.instrumentBus);
-    return { osc1: oscs[0], osc2: noise, gain: g, extra: oscs.slice(1) };
+
+    const stopAt = decayEnd + 0.05;
+    oscs.forEach((o) => o.stop(stopAt));
+    noise.stop(stopAt);
   }
 
-  function startCowbellVoice(time) {
+  function playCowbell(time) {
     const ctx = state.ctx;
+    const decayEnd = time + envTime(0.4);
     const osc1 = ctx.createOscillator();
     osc1.type = 'square';
     osc1.frequency.value = noteFreq(800);
@@ -522,18 +533,20 @@
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(0.7, time + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.15, time + envTime(0.4));
+    g.gain.exponentialRampToValueAtTime(0.001, decayEnd);
     osc1.connect(bp);
     osc2.connect(bp);
     bp.connect(g);
     g.connect(state.instrumentBus);
     osc1.start(time);
     osc2.start(time);
-    return { osc1, osc2, gain: g };
+    osc1.stop(decayEnd + 0.05);
+    osc2.stop(decayEnd + 0.05);
   }
 
-  function startShakerVoice(time) {
+  function playShaker(time) {
     const ctx = state.ctx;
+    const decayEnd = time + envTime(0.15);
     const noise = ctx.createBufferSource();
     noise.buffer = ensureNoiseBuffer();
     noise.loop = true;
@@ -543,12 +556,12 @@
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
     g.gain.exponentialRampToValueAtTime(0.6, time + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.12, time + envTime(0.15));
+    g.gain.exponentialRampToValueAtTime(0.001, decayEnd);
     noise.connect(hp);
     hp.connect(g);
     g.connect(state.instrumentBus);
     noise.start(time);
-    return { osc1: noise, osc2: null, gain: g };
+    noise.stop(decayEnd + 0.05);
   }
 
   // Karplus-Strong plucked/struck string: a noise burst runs around a delay
@@ -888,27 +901,13 @@
       pad.style.top = inst.top + '%';
       pad.style.left = inst.left + '%';
       pad.innerHTML = `<span class="pad-icon">${inst.icon}</span><span>${inst.name}</span>`;
-      if (inst.startVoice) {
-        pad.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          if (!state.started) return;
-          pad.setPointerCapture(e.pointerId);
-          const voice = inst.startVoice(state.ctx.currentTime + 0.005);
-          state.activeVoices.set(e.pointerId, { voice, pad, startedAt: performance.now() });
-          pad.classList.add('active');
-        });
-        pad.addEventListener('pointerup', (e) => releaseVoiceForPointer(e.pointerId));
-        pad.addEventListener('pointercancel', (e) => releaseVoiceForPointer(e.pointerId));
-        pad.addEventListener('lostpointercapture', (e) => releaseVoiceForPointer(e.pointerId));
-      } else {
-        pad.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          if (!state.started) return;
-          inst.trigger(state.ctx.currentTime + 0.005);
-          pad.classList.add('active');
-          setTimeout(() => pad.classList.remove('active'), 120);
-        });
-      }
+      pad.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (!state.started) return;
+        inst.trigger(state.ctx.currentTime + 0.005);
+        pad.classList.add('active');
+        setTimeout(() => pad.classList.remove('active'), 120);
+      });
       el.drumKit.appendChild(pad);
     });
   }
